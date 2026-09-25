@@ -47,7 +47,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   const description = values.description_block?.description_input?.value || '';
   const priority = values.priority_block?.priority_input?.selected_option?.value || 'Medium';
   const dueDate = values.due_date_block?.due_date_input?.selected_date || null;
-  const assignee = values.assignee_block?.assignee_input?.selected_users || [];
+  const assignee = values.assignee_block?.assignee_input?.value || '';
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
 
   const priorityEmoji = priority === 'High' ? '🔴' : priority === 'Medium' ? '🟡' : '🟢';

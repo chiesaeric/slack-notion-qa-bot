@@ -142,11 +142,11 @@ function handleCreateTaskModal() {
         type: 'input',
         block_id: 'assignee_block',
         element: {
-          type: 'multi_users_select',
+          type: 'plain_text_input',
           action_id: 'assignee_input',
           placeholder: {
             type: 'plain_text',
-            text: 'Select assignee(s)',
+            text: 'Enter assignee name(s)...',
           },
         },
         label: {

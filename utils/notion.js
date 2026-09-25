@@ -66,16 +66,13 @@ async function createNotionTask(taskData) {
     };
   }
 
-  // Add assignee if provided - stored as text (Slack user ID)
-  // Note: Notion people property requires UUID, Slack user IDs are not UUIDs
-  // So we store as text instead
-  if (assignee && assignee.length > 0) {
-    // Change 'Assignee' to your actual property name (rich_text or text)
+  // Add assignee if provided - stored as text
+  if (assignee) {
     properties.Assignee = {
       rich_text: [
         {
           text: {
-            content: assignee.join(', '),
+            content: assignee,
           },
         },
       ],
