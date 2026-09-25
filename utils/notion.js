@@ -14,12 +14,6 @@ const DATABASE_ID = process.env.NOTION_DATABASE_ID;
 /**
  * Create a new task in Notion Database
  * @param {Object} taskData - Task data from modal submission
- * @param {string} taskData.taskName - Task name (required)
- * @param {string} taskData.description - Task description (optional)
- * @param {string} taskData.priority - Priority level: High, Medium, Low (default: Medium)
- * @param {string|null} taskData.dueDate - Due date in YYYY-MM-DD format (optional)
- * @param {string[]} taskData.assignee - Array of user IDs (optional)
- * @param {string[]} taskData.labels - Array of channel IDs (optional)
  * @returns {Promise<Object>} Created page result with URL
  */
 async function createNotionTask(taskData) {
@@ -28,7 +22,7 @@ async function createNotionTask(taskData) {
   // Build Notion page properties based on your database schema
   // Adjust property names to match your actual Notion database schema
   const properties = {
-    // Text property - change 'Name' to your actual title property name
+    // Title property - change 'Name' to your actual title property name
     Name: {
       title: [
         {
@@ -42,7 +36,7 @@ async function createNotionTask(taskData) {
 
   // Add description if provided
   if (description) {
-    // Change 'Description' to your actual property name
+    // Change 'Description' to your actual property name (rich_text)
     properties.Description = {
       rich_text: [
         {
@@ -72,13 +66,19 @@ async function createNotionTask(taskData) {
     };
   }
 
-  // Add assignee if provided (multi-select or people property)
+  // Add assignee if provided - stored as text (Slack user ID)
+  // Note: Notion people property requires UUID, Slack user IDs are not UUIDs
+  // So we store as text instead
   if (assignee && assignee.length > 0) {
-    // Change 'Assignee' to your actual property name
-    // For people property, use 'people' type
-    // For multi-select, use 'multi_select' type
+    // Change 'Assignee' to your actual property name (rich_text or text)
     properties.Assignee = {
-      people: assignee.map(userId => ({ id: userId })),
+      rich_text: [
+        {
+          text: {
+            content: assignee.join(', '),
+          },
+        },
+      ],
     };
   }
 
