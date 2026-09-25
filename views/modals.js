@@ -1,9 +1,15 @@
 /**
  * Modal View Definitions for QA Task Creation
  * @param {Object} container - Optional container data for thread context
+ * @param {Object} prefilledData - Optional pre-filled data from thread
  */
 
-function handleCreateTaskModal(container = {}) {
+function handleCreateTaskModal(container = {}, prefilledData = {}) {
+  const {
+    projectName = '',
+    dueDate = '',
+  } = prefilledData;
+
   return {
     type: 'modal',
     callback_id: 'create_task_modal',
@@ -36,6 +42,7 @@ function handleCreateTaskModal(container = {}) {
             type: 'plain_text',
             text: 'Enter task name...',
           },
+          initial_value: projectName || undefined,
         },
         label: {
           type: 'plain_text',
@@ -127,6 +134,7 @@ function handleCreateTaskModal(container = {}) {
             type: 'plain_text',
             text: 'Select due date',
           },
+          initial_date: dueDate || undefined,
         },
         label: {
           type: 'plain_text',
