@@ -11,62 +11,6 @@ const app = new App({
 });
 
 // ============================================
-// HELPER: Extract data from thread messages
-// ============================================
-function extractDataFromThread(messages) {
-  let projectName = '';
-  let dueDate = '';
-  
-  // Combine all message texts
-  const fullText = messages.map(m => m.text || '').join(' ');
-  
-  // Pattern untuk project name (flexible)
-  // Matches: "project: XYZ", "Project XYZ", "Project: XYZ", "nama project: XYZ"
-  const projectPatterns = [
-    /project[:\s]+([^\n,]+)/i,
-    /nama\s*project[:\s]+([^\n,]+)/i,
-    /project\s*name[:\s]+([^\n,]+)/i,
-  ];
-  
-  for (const pattern of projectPatterns) {
-    const match = fullText.match(pattern);
-    if (match && match[1]) {
-      projectName = match[1].trim();
-      break;
-    }
-  }
-  
-  // Pattern untuk due date
-  // Matches: "due: YYYY-MM-DD", "due date: YYYY-MM-DD", "deadline: YYYY-MM-DD"
-  // Also matches: "due: 25-12-2026", "due: 25/12/2026"
-  const dueDatePatterns = [
-    /due\s*date[:\s]+(\d{4}-\d{2}-\d{2})/i,
-    /due[:\s]+(\d{4}-\d{2}-\d{2})/i,
-    /deadline[:\s]+(\d{4}-\d{2}-\d{2})/i,
-    /due[:\s]+(\d{2}-\d{2}-\d{4})/i,
-    /due[:\s]+(\d{2}\/\d{2}\/\d{4})/i,
-  ];
-  
-  for (const pattern of dueDatePatterns) {
-    const match = fullText.match(pattern);
-    if (match && match[1]) {
-      dueDate = match[1].trim();
-      // Convert DD-MM-YYYY or DD/MM/YYYY to YYYY-MM-DD
-      if (dueDate.includes('-') && dueDate.split('-')[0].length === 2) {
-        const [d, m, y] = dueDate.split('-');
-        dueDate = `${y}-${m}-${d}`;
-      } else if (dueDate.includes('/')) {
-        const [d, m, y] = dueDate.split('/');
-        dueDate = `${y}-${m}-${d}`;
-      }
-      break;
-    }
-  }
-  
-  return { projectName, dueDate };
-}
-
-// ============================================
 // SLASH COMMAND: /qa-bot-create-task
 // ============================================
 app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
@@ -84,31 +28,14 @@ app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
 
 // ============================================
 // APP MENTION IN THREAD
-// When bot is mentioned in a thread, parse thread and respond with pre-filled button
+// When bot is mentioned in a thread, respond with a button
 // ============================================
 app.event('app_mention', async ({ event, client }) => {
   const channelId = event.channel;
   const threadTs = event.thread_ts || event.event_ts;
 
   try {
-    // Fetch thread messages
-    const threadReplies = await client.conversations.replies({
-      channel: channelId,
-      ts: threadTs,
-      limit: 20,
-    });
-
-    // Extract data from thread
-    const messages = threadReplies.messages || [];
-    const { projectName, dueDate } = extractDataFromThread(messages);
-
-    // Build prefilled data for modal
-    const prefilledData = {
-      projectName: projectName || '',
-      dueDate: dueDate || '',
-    };
-
-    // Reply in thread with a button (pass prefilled data via action_id or metadata)
+    // Reply in thread with a button to create task
     await client.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
@@ -118,7 +45,7 @@ app.event('app_mention', async ({ event, client }) => {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `👋 *QA Bot*\nCreate a new task in Notion by clicking the button below.${projectName || dueDate ? '\n\n📋 *Detected from thread:*' : ''}${projectName ? `\n• Project: ${projectName}` : ''}${dueDate ? `\n• Due Date: ${dueDate}` : ''}`,
+            text: `👋 *QA Bot*\nCreate a new task in Notion by clicking the button below.`,
           },
         },
         {
@@ -133,7 +60,6 @@ app.event('app_mention', async ({ event, client }) => {
               },
               action_id: 'create_task_button',
               style: 'primary',
-              value: JSON.stringify(prefilledData),
             },
           ],
         },
@@ -145,25 +71,15 @@ app.event('app_mention', async ({ event, client }) => {
 });
 
 // ============================================
-// BUTTON CLICK HANDLER - Opens Modal with Prefilled Data
+// BUTTON CLICK HANDLER - Opens Modal
 // ============================================
 app.action('create_task_button', async ({ ack, body, client }) => {
   await ack();
 
   try {
-    // Parse prefilled data from button value
-    let prefilledData = { projectName: '', dueDate: '' };
-    try {
-      if (body.actions && body.actions[0] && body.actions[0].value) {
-        prefilledData = JSON.parse(body.actions[0].value);
-      }
-    } catch (e) {
-      // Ignore parse errors, use empty data
-    }
-
     await client.views.open({
       trigger_id: body.trigger_id,
-      view: handleCreateTaskModal({}, prefilledData),
+      view: handleCreateTaskModal(),
     });
   } catch (error) {
     console.error('Error opening modal from button:', error);
