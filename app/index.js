@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { App } = require('@slack/bolt');
-const { handleCreateTaskModal, handleModalSubmit } = require('../views/modals');
+const { handleCreateTaskModal } = require('../views/modals');
 const { createNotionTask } = require('../utils/notion');
 
 const app = new App({
@@ -10,7 +10,7 @@ const app = new App({
   appToken: process.env.SLACK_APP_TOKEN,
 });
 
-const CHANNEL_ID = process.env.SLACK_CHANNEL_ID || 'C07XXXXXXXXX';
+const CHANNEL_ID = process.env.SLACK_CHANNEL_ID;
 
 // ============================================
 // SLASH COMMAND: /qa-bot-create-task
@@ -35,8 +35,10 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   await ack();
 
   const userId = body.user.id;
-  const channelId = body.container.channel_id;
-  const threadTs = body.container.thread_ts || body.container.message_ts;
+  
+  // Handle cases where channel_id might be undefined (e.g., DM context)
+  const channelId = body.container?.channel_id;
+  const threadTs = body.container?.thread_ts || body.container?.message_ts;
 
   // Parse values from modal submission
   const values = body.view.state.values;
@@ -47,6 +49,8 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   const dueDate = values.due_date_block?.due_date_input?.selected_date || null;
   const assignee = values.assignee_block?.assignee_input?.selected_users || [];
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
+
+  const priorityEmoji = priority === 'High' ? '🔴' : priority === 'Medium' ? '🟡' : '🟢';
 
   try {
     // Insert to Notion
@@ -59,23 +63,39 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
       labels,
     });
 
-    // Reply to thread
-    const priorityEmoji = priority === 'High' ? '🔴' : priority === 'Medium' ? '🟡' : '🟢';
-    
-    await client.chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
-      text: `✅ *Task created!*\n> *Name:* ${taskName}\n> *Priority:* ${priorityEmoji} ${priority}\n> *Notion Page:* ${notionResult.url}`,
-    });
+    // Determine where to send response
+    if (channelId) {
+      // Reply in channel/thread if available
+      await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `✅ *Task created!*\n> *Name:* ${taskName}\n> *Priority:* ${priorityEmoji} ${priority}\n> *Notion Page:* ${notionResult.url}`,
+      });
+    } else {
+      // Send DM to user if no channel context
+      await client.chat.postMessage({
+        channel: userId,
+        text: `✅ *Task created!*\n> *Name:* ${taskName}\n> *Priority:* ${priorityEmoji} ${priority}\n> *Notion Page:* ${notionResult.url}`,
+      });
+    }
 
   } catch (error) {
     console.error('Error creating task:', error);
 
-    await client.chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
-      text: `❌ *Failed to create task*\n> Error: ${error.message}`,
-    });
+    const errorMessage = `❌ *Failed to create task*\n> Error: ${error.message}`;
+
+    if (channelId) {
+      await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: errorMessage,
+      });
+    } else {
+      await client.chat.postMessage({
+        channel: userId,
+        text: errorMessage,
+      });
+    }
   }
 });
 
