@@ -120,7 +120,7 @@ function handleCreateTaskModal() {
         type: 'input',
         block_id: 'due_date_block',
         element: {
-          type: 'date_picker',
+          type: 'datepicker',
           action_id: 'due_date_input',
           placeholder: {
             type: 'plain_text',
