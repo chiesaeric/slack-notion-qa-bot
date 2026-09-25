@@ -10,8 +10,6 @@ const app = new App({
   appToken: process.env.SLACK_APP_TOKEN,
 });
 
-const CHANNEL_ID = process.env.SLACK_CHANNEL_ID;
-
 // ============================================
 // SLASH COMMAND: /qa-bot-create-task
 // ============================================
@@ -29,12 +27,73 @@ app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
 });
 
 // ============================================
+// SLASH COMMAND: /qa-bot-post-button
+// Post a task creation button to the current thread
+// ============================================
+app.command('/qa-bot-post-button', async ({ command, ack, client }) => {
+  await ack();
+
+  const channelId = command.channel_id;
+  const threadTs = command.message_ts; // The message timestamp to reply in thread
+
+  try {
+    await client.chat.postMessage({
+      channel: channelId,
+      thread_ts: threadTs,
+      text: 'Create a new QA Task',
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '*QA Task*\nClick the button below to create a new task in Notion.',
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: '➕ Create Task',
+                emoji: true,
+              },
+              action_id: 'create_task_button',
+              style: 'primary',
+            },
+          ],
+        },
+      ],
+    });
+  } catch (error) {
+    console.error('Error posting button:', error);
+  }
+});
+
+// ============================================
+// BUTTON CLICK HANDLER - Opens Modal
+// ============================================
+app.action('create_task_button', async ({ ack, body, client }) => {
+  await ack();
+
+  try {
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: handleCreateTaskModal(body.container),
+    });
+  } catch (error) {
+    console.error('Error opening modal from button:', error);
+  }
+});
+
+// ============================================
 // MODAL SUBMISSION HANDLER
 // ============================================
 app.view('create_task_modal', async ({ ack, body, client }) => {
   const userId = body.user.id;
   
-  // Handle cases where channel_id might be undefined (e.g., DM context)
+  // Get channel and thread info from container
   const channelId = body.container?.channel_id;
   const threadTs = body.container?.thread_ts || body.container?.message_ts;
 
@@ -95,7 +154,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
       },
     });
 
-    // Also send notification to channel/thread if available
+    // Also send notification to thread if available
     if (channelId) {
       await client.chat.postMessage({
         channel: channelId,

@@ -1,8 +1,9 @@
 /**
  * Modal View Definitions for QA Task Creation
+ * @param {Object} container - Optional container data for thread context
  */
 
-function handleCreateTaskModal() {
+function handleCreateTaskModal(container = {}) {
   return {
     type: 'modal',
     callback_id: 'create_task_modal',
