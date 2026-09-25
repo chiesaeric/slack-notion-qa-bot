@@ -32,8 +32,6 @@ app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
 // MODAL SUBMISSION HANDLER
 // ============================================
 app.view('create_task_modal', async ({ ack, body, client }) => {
-  await ack();
-
   const userId = body.user.id;
   
   // Handle cases where channel_id might be undefined (e.g., DM context)
@@ -63,18 +61,45 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
       labels,
     });
 
-    // Determine where to send response
+    // Ack with success modal update
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: {
+          type: 'plain_text',
+          text: '✅ Task Created',
+          emoji: true,
+        },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `✅ *Task successfully created!*\n\n> *Name:* ${taskName}\n> *Priority:* ${priorityEmoji} ${priority}${assignee ? `\n> *Assignee:* ${assignee}` : ''}${dueDate ? `\n> *Due Date:* ${dueDate}` : ''}`,
+            },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `🔗 *Notion Page:* <${notionResult.url}|Open in Notion>`,
+            },
+          },
+        ],
+        close: {
+          type: 'plain_text',
+          text: 'Close',
+          emoji: true,
+        },
+      },
+    });
+
+    // Also send notification to channel/thread if available
     if (channelId) {
-      // Reply in channel/thread if available
       await client.chat.postMessage({
         channel: channelId,
         thread_ts: threadTs,
-        text: `✅ *Task created!*\n> *Name:* ${taskName}\n> *Priority:* ${priorityEmoji} ${priority}\n> *Notion Page:* ${notionResult.url}`,
-      });
-    } else {
-      // Send DM to user if no channel context
-      await client.chat.postMessage({
-        channel: userId,
         text: `✅ *Task created!*\n> *Name:* ${taskName}\n> *Priority:* ${priorityEmoji} ${priority}\n> *Notion Page:* ${notionResult.url}`,
       });
     }
@@ -82,20 +107,32 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   } catch (error) {
     console.error('Error creating task:', error);
 
-    const errorMessage = `❌ *Failed to create task*\n> Error: ${error.message}`;
-
-    if (channelId) {
-      await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: errorMessage,
-      });
-    } else {
-      await client.chat.postMessage({
-        channel: userId,
-        text: errorMessage,
-      });
-    }
+    // Ack with error modal
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: {
+          type: 'plain_text',
+          text: '❌ Error',
+          emoji: true,
+        },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Failed to create task*\n\n> Error: ${error.message}`,
+            },
+          },
+        ],
+        close: {
+          type: 'plain_text',
+          text: 'Close',
+          emoji: true,
+        },
+      },
+    });
   }
 });
 
