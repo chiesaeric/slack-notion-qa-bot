@@ -10,6 +10,9 @@ const app = new App({
   appToken: process.env.SLACK_APP_TOKEN,
 });
 
+// User token for reading thread messages
+const userToken = process.env.SLACK_USER_TOKEN;
+
 // ============================================
 // HELPER: Extract data from thread messages
 // ============================================
@@ -88,12 +91,12 @@ app.event('app_mention', async ({ event, client }) => {
   const threadTs = event.thread_ts || event.event_ts;
 
   try {
-    // Fetch thread messages
+    // Fetch thread messages using user token
     const threadReplies = await client.conversations.replies({
       channel: channelId,
       ts: threadTs,
       limit: 20,
-    });
+    }, { token: userToken });
 
     // Extract data from thread
     const messages = threadReplies.messages || [];
