@@ -27,26 +27,25 @@ app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
 });
 
 // ============================================
-// SLASH COMMAND: /qa-bot-post-button
-// Post a task creation button to the current thread
+// APP MENTION IN THREAD
+// When bot is mentioned in a thread, respond with a button
 // ============================================
-app.command('/qa-bot-post-button', async ({ command, ack, client }) => {
-  await ack();
-
-  const channelId = command.channel_id;
-  const threadTs = command.message_ts; // The message timestamp to reply in thread
+app.event('app_mention', async ({ event, client }) => {
+  const channelId = event.channel;
+  const threadTs = event.thread_ts || event.event_ts;
 
   try {
+    // Reply in thread with a button to create task
     await client.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
-      text: 'Create a new QA Task',
+      text: 'Hi! Click the button below to create a QA task in Notion.',
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: '*QA Task*\nClick the button below to create a new task in Notion.',
+            text: `👋 *QA Bot*\nCreate a new task in Notion by clicking the button below.`,
           },
         },
         {
@@ -67,7 +66,7 @@ app.command('/qa-bot-post-button', async ({ command, ack, client }) => {
       ],
     });
   } catch (error) {
-    console.error('Error posting button:', error);
+    console.error('Error responding to app mention:', error);
   }
 });
 
@@ -80,7 +79,7 @@ app.action('create_task_button', async ({ ack, body, client }) => {
   try {
     await client.views.open({
       trigger_id: body.trigger_id,
-      view: handleCreateTaskModal(body.container),
+      view: handleCreateTaskModal(),
     });
   } catch (error) {
     console.error('Error opening modal from button:', error);
@@ -196,7 +195,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
 });
 
 // ============================================
-// HOME TAB (optional - for quick access)
+// HOME TAB
 // ============================================
 app.event('app_home_opened', async ({ event, client }) => {
   try {
