@@ -1,0 +1,17 @@
+{
+  "name": "slack-notion-bot",
+  "version": "1.0.0",
+  "description": "Slack bot that creates tasks in Notion via modal",
+  "main": "app/index.js",
+  "scripts": {
+    "start": "node app/index.js",
+    "dev": "node --watch app/index.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.18.0",
+    "@slack/web-api": "^7.3.4",
+    "@notionhq/client": "^2.2.15",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0"
+  }
+}
