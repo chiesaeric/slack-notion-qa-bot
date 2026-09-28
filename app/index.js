@@ -281,8 +281,8 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
               options: [
                 { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
                 { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
-                { text: { type: 'plain_text', text: '🔄 In Staging', emoji: true }, value: 'In Staging' },
                 { text: { type: 'plain_text', text: '🔄 In Pre-staging', emoji: true }, value: 'In Pre-staging' },
+                { text: { type: 'plain_text', text: '🔄 In Staging', emoji: true }, value: 'In Staging' },
                 { text: { type: 'plain_text', text: '✅ Ready to Release', emoji: true }, value: 'Ready to Release' },
                 { text: { type: 'plain_text', text: '🚀 Released', emoji: true }, value: 'Released' },
               ],
