@@ -581,10 +581,18 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   // ============================================
   // Get thread info from Notion Slack Thread property
   const notionThreadLink = context?.notionThreadLink || '';
+  console.log('=== Modal 2 Debug (Ready to Release) ===');
+  console.log('context:', JSON.stringify(context));
+  console.log('notionThreadLink:', notionThreadLink);
+  console.log('channelId:', channelId);
+  console.log('threadTs:', threadTs);
+  console.log('=====================================');
+
   let replyChannelId = channelId;
   let replyThreadTs = threadTs;
   if (notionThreadLink) {
     const parsed = parseThreadLink(notionThreadLink);
+    console.log('parsed thread:', parsed);
     if (parsed) {
       replyChannelId = parsed.channelId;
       replyThreadTs = parsed.threadTs;
@@ -596,12 +604,19 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
 
     await ack({ response_action: 'clear' });
 
+    console.log('replyChannelId:', replyChannelId);
+    console.log('replyThreadTs:', replyThreadTs);
+
     if (replyChannelId && replyThreadTs) {
+      console.log('Posting message to thread...');
       await client.chat.postMessage({
         channel: replyChannelId,
         thread_ts: replyThreadTs,
         text: `:arrows_counterclockwise: *Task Updated!*\n\nStatus: ${status}\n:link: <${notionLink}|Open in Notion>`,
       });
+      console.log('Message posted successfully');
+    } else {
+      console.log('SKIPPED: replyChannelId or replyThreadTs is empty');
     }
   } catch (error) {
     console.error('Error updating task:', error);
@@ -645,10 +660,17 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
 
     // Get thread info from Notion Slack Thread property
     const notionThreadLink = context?.notionThreadLink || '';
+    console.log('=== Modal 3 Debug (Created Test Plan) ===');
+    console.log('notionThreadLink:', notionThreadLink);
+    console.log('channelId:', channelId);
+    console.log('threadTs:', threadTs);
+    console.log('================================');
+
     let replyChannelId = channelId;
     let replyThreadTs = threadTs;
     if (notionThreadLink) {
       const parsed = parseThreadLink(notionThreadLink);
+      console.log('parsed thread:', parsed);
       if (parsed) {
         replyChannelId = parsed.channelId;
         replyThreadTs = parsed.threadTs;
@@ -699,6 +721,15 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
   // ============================================
   // Branch: In Staging / In Pre-staging (Report)
   // ============================================
+  console.log('=== Modal 3 Debug (Report) ===');
+  console.log('context keys:', context ? Object.keys(context) : 'null');
+  console.log('notionThreadLink:', context?.notionThreadLink);
+  console.log('channelId:', channelId);
+  console.log('threadTs:', threadTs);
+  console.log('sheetName:', sheetName);
+  console.log('coverageData:', coverageData);
+  console.log('================================');
+
   const notionThreadLink = context?.notionThreadLink || '';
   let replyChannelId = channelId;
   let replyThreadTs = threadTs;
