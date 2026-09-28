@@ -168,7 +168,11 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
     const messages = threadReplies.messages || [];
     const { projectName, dueDate, description } = extractDataFromThread(messages);
 
-    // Update modal with extracted data
+    // Get original channel/thread context from command
+    const originalChannelId = body.container?.channel_id || '';
+    const originalThreadTs = body.container?.thread_ts || body.container?.message_ts || '';
+
+    // Update modal with extracted data + hidden fields for channel/thread
     await ack({
       response_action: 'update',
       view: {
@@ -176,7 +180,19 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
         callback_id: 'create_task_modal_final',
         title: { type: 'plain_text', text: 'Create QA Task', emoji: true },
         blocks: [
-          // Thread Link (readonly or editable)
+          // Hidden fields for channel/thread context
+          {
+            type: 'input',
+            block_id: 'context_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'context_input',
+              initial_value: `${originalChannelId}|${originalThreadTs}`,
+            },
+            label: { type: 'plain_text', text: 'Context', emoji: true },
+            optional: true,
+          },
+          // Thread Link
           {
             type: 'input',
             block_id: 'thread_link_block',
@@ -308,9 +324,9 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
   const assignee = values.assignee_block?.assignee_input?.value || '';
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
 
-  // Get channel/thread from container - these are from the ORIGINAL channel where modal was opened
-  const channelId = body.container?.channel_id;
-  const threadTs = body.container?.thread_ts || body.container?.message_ts;
+  // Parse context from hidden field (format: "channelId|threadTs")
+  const contextValue = values.context_block?.context_input?.value || '';
+  const [channelId, threadTs] = contextValue.split('|');
 
   const priorityEmoji = priority === 'High' ? '🔴' : priority === 'Medium' ? '🟡' : '🟢';
 
