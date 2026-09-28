@@ -12,6 +12,11 @@ const app = new App({
 
 // User token for reading thread messages
 const userToken = process.env.SLACK_USER_TOKEN;
+console.log('=== TOKEN CHECK ===');
+console.log('userToken exists:', !!userToken);
+console.log('userToken starts with xup:', userToken?.startsWith('xup'));
+console.log('userToken prefix:', userToken?.substring(0, 10));
+console.log('====================');
 
 // Store context per user for thread reply
 // Key: user_id, Value: { channelId, threadTs }
@@ -261,6 +266,12 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   }
 
   try {
+    // Debug: check token being used
+    console.log('=== FETCHING THREAD ===');
+    console.log('Using userToken:', userToken ? `${userToken.substring(0, 10)}...` : 'MISSING');
+    console.log('parsed.channelId:', parsed.channelId);
+    console.log('parsed.threadTs:', parsed.threadTs);
+    
     // Fetch thread messages
     const threadReplies = await client.conversations.replies(
       { channel: parsed.channelId, ts: parsed.threadTs, limit: 50 },
