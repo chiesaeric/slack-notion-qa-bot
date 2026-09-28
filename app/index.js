@@ -731,16 +731,16 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     if (notes) notionReport += `\nNotes: ${notes}`;
 
     // Slack format
-    let slackReport = `*[Testing Report] ${taskName}*\n`;
-    slackReport += `> Date: ${today}\n`;
-    slackReport += `> Env: ${sheetName}\n\n`;
-    slackReport += `*Total Coverage Test:* ${coverageDisplay}%\n`;
-    slackReport += `Testcases: ${testcasesFormatted}`;
+    let slackReport = `*[Testing Report] Name: ${taskName}*\n`;
+    slackReport += `>Date: ${today}\n`;
+    slackReport += `>Env: ${sheetName}\n\n`;
+    slackReport += `Total Coverage Test: ${coverageDisplay}%\n`;
+    slackReport += `Test Cases: ${testcasesFormatted}`;
     if (testCaseUrl) slackReport += ` (${testCaseUrl})`;
     slackReport += `\nPassed Test: ${coverageData.totalPassed || 0} cases\n`;
     slackReport += `Failed Test: ${coverageData.totalFailed || 0} cases\n`;
     slackReport += `Untested Test: ${coverageData.totalNotTested || 0} cases\n\n`;
-    if (notes) slackReport += `*Notes:*\n${notes}\n\n`;
+    if (notes) slackReport += `Notes:\n${notes}\n\n`;
     if (ccUsers.length > 0) {
       const ccFormatted = ccUsers.map(u => `<@${u}>`).join(' ');
       slackReport += `cc: ${ccFormatted}`;
