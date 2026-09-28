@@ -111,14 +111,14 @@ async function getThreadLinkFromPage(pageId) {
 async function updateNotionTaskStatus(pageId, status, progress) {
   const properties = {};
 
-  // Update Status (select property)
+  // Update Status (status type)
   if (status) {
-    properties.Status = { select: { name: status } };
+    properties.Status = { status: { name: status } };
   }
 
-  // Update Progress (number property)
+  // Update Number (this is the progress field)
   if (progress !== undefined && progress !== null) {
-    properties.Progress = { number: parseInt(progress, 10) };
+    properties.Number = { number: parseInt(progress, 10) };
   }
 
   const response = await notion.pages.update({
@@ -138,15 +138,14 @@ async function updateNotionTaskStatus(pageId, status, progress) {
 async function getPageInfo(pageId) {
   const page = await notion.pages.retrieve({ page_id: pageId });
   
-  // Extract properties
   const props = page.properties;
   
   return {
     id: page.id,
     url: page.url,
     name: props.Name?.title?.[0]?.plain_text || '',
-    status: props.Status?.select?.name || '',
-    progress: props.Progress?.number || 0,
+    status: props.Status?.status?.name || '',
+    progress: props.Number?.number || 0,
   };
 }
 
