@@ -372,18 +372,38 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   // Direct update + reply (skip Modal 3)
   // ============================================
   if (status === 'Ready to Release' || status === 'Released') {
+    // Get thread info from Notion Slack Thread property
+    const notionThreadLink = context?.notionThreadLink || '';
+    let replyChannelId = channelId;
+    let replyThreadTs = threadTs;
+    if (notionThreadLink) {
+      const parsed = parseThreadLink(notionThreadLink);
+      console.log('parsed thread:', parsed);
+      if (parsed) {
+        replyChannelId = parsed.channelId;
+        replyThreadTs = parsed.threadTs;
+      }
+    }
+
     try {
       await updateNotionTaskStatus(notionPageId, status, 100);
 
       await ack({ response_action: 'clear' });
 
+      console.log('replyChannelId:', replyChannelId);
+      console.log('replyThreadTs:', replyThreadTs);
+
       // Reply to thread
-      if (channelId && threadTs) {
+      if (replyChannelId && replyThreadTs) {
+        console.log('Posting message to thread...');
         await client.chat.postMessage({
-          channel: channelId,
-          thread_ts: threadTs,
-          text: `✅ *Task Completed!*\n\n> Status: ${status}\n> Progress: 100%\n> 🔗 <${notionLink}|Open in Notion>`,
+          channel: replyChannelId,
+          thread_ts: replyThreadTs,
+          text: `:arrows_counterclockwise: *Task Updated!*\n\nStatus: ${status}\n:link: <${notionLink}|Open in Notion>`,
         });
+        console.log('Message posted successfully');
+      } else {
+        console.log('SKIPPED: replyChannelId or replyThreadTs is empty');
       }
     } catch (error) {
       console.error('Error updating task:', error);
