@@ -1012,7 +1012,7 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
     
     const reportTitle = `[Testing Report] ${taskName}`;
     
-    const reportContent = `${reportTitle}\nDate: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} Env: ${env}\nTotal Coverage Test: ${coverageFormatted}%\nTestcases: ${testcaseLine}\nPassed Test: ${coverageFormatted}%\nFailed Test: ${failed} cases\nUntested Test: ${untested} cases\nNotes: ${notes || '-'}`;
+    const reportContent = `${reportTitle}\nDate: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} Env: ${env}\nTotal Coverage Test: ${coverageFormatted}%\nTest Cases: ${testcaseLine}\nPassed Test: ${passed} cases\nFailed Test: ${failed} cases\nUntested Test: ${untested} cases\nNotes: ${notes || '-'}`;
 
     await notion.comments.create({
       parent: { page_id: notionPageId },
@@ -1051,7 +1051,7 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
     reportText += `> Env: ${env}\n\n`;
     reportText += `*Total Coverage Test:* ${coverageFormatted}%\n\n`;
     reportText += `Test Cases: ${testcaseLineFormatted}\n`;
-    reportText += `Passed Test: ${coverageFormatted}%\n`;
+    reportText += `Passed Test: ${passed} cases\n`;
     reportText += `Failed Test: ${failed} cases\n`;
     reportText += `Untested Test: ${untested} cases\n\n`;
     reportText += `*Notes:*\n${notes || '-'}`;
