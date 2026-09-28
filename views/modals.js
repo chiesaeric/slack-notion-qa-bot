@@ -1,15 +1,11 @@
 /**
  * Modal View Definitions for QA Task Creation
- * @param {Object} container - Optional container data
- * @param {Object} prefilledData - Optional pre-filled data from thread
  */
 
-function handleCreateTaskModal(container = {}, prefilledData = {}) {
-  const {
-    projectName = '',
-    dueDate = '',
-  } = prefilledData;
-
+/**
+ * Initial modal - asks for thread link only
+ */
+function handleCreateTaskModal() {
   return {
     type: 'modal',
     callback_id: 'create_task_modal',
@@ -20,7 +16,7 @@ function handleCreateTaskModal(container = {}, prefilledData = {}) {
     },
     submit: {
       type: 'plain_text',
-      text: 'Create',
+      text: 'Next',
       emoji: true,
     },
     close: {
@@ -30,171 +26,25 @@ function handleCreateTaskModal(container = {}, prefilledData = {}) {
     },
     blocks: [
       // ========================================
-      // TASK NAME (Required)
+      // THREAD LINK
       // ========================================
       {
         type: 'input',
-        block_id: 'task_name_block',
+        block_id: 'thread_link_block',
         element: {
           type: 'plain_text_input',
-          action_id: 'task_name_input',
+          action_id: 'thread_link_input',
           placeholder: {
             type: 'plain_text',
-            text: 'Enter task name...',
-          },
-          initial_value: projectName || undefined,
-        },
-        label: {
-          type: 'plain_text',
-          text: 'Task Name *',
-          emoji: true,
-        },
-      },
-
-      // ========================================
-      // DESCRIPTION
-      // ========================================
-      {
-        type: 'input',
-        block_id: 'description_block',
-        element: {
-          type: 'plain_text_input',
-          action_id: 'description_input',
-          placeholder: {
-            type: 'plain_text',
-            text: 'Enter task description...',
-          },
-          multiline: true,
-        },
-        label: {
-          type: 'plain_text',
-          text: 'Description',
-          emoji: true,
-        },
-        optional: true,
-      },
-
-      // ========================================
-      // PRIORITY (Required)
-      // ========================================
-      {
-        type: 'input',
-        block_id: 'priority_block',
-        element: {
-          type: 'static_select',
-          action_id: 'priority_input',
-          placeholder: {
-            type: 'plain_text',
-            text: 'Select priority',
-          },
-          options: [
-            {
-              text: {
-                type: 'plain_text',
-                text: '🔴 High',
-                emoji: true,
-              },
-              value: 'High',
-            },
-            {
-              text: {
-                type: 'plain_text',
-                text: '🟡 Medium',
-                emoji: true,
-              },
-              value: 'Medium',
-            },
-            {
-              text: {
-                type: 'plain_text',
-                text: '🟢 Low',
-                emoji: true,
-              },
-              value: 'Low',
-            },
-          ],
-        },
-        label: {
-          type: 'plain_text',
-          text: 'Priority *',
-          emoji: true,
-        },
-      },
-
-      // ========================================
-      // DUE DATE (Optional)
-      // ========================================
-      {
-        type: 'input',
-        block_id: 'due_date_block',
-        element: {
-          type: 'datepicker',
-          action_id: 'due_date_input',
-          placeholder: {
-            type: 'plain_text',
-            text: 'Select due date',
-          },
-          initial_date: dueDate || undefined,
-        },
-        label: {
-          type: 'plain_text',
-          text: 'Due Date',
-          emoji: true,
-        },
-        optional: true,
-      },
-
-      // ========================================
-      // ASSIGNEE (Optional)
-      // ========================================
-      {
-        type: 'input',
-        block_id: 'assignee_block',
-        element: {
-          type: 'plain_text_input',
-          action_id: 'assignee_input',
-          placeholder: {
-            type: 'plain_text',
-            text: 'Enter assignee name(s)...',
+            text: 'Paste Slack thread link here...',
           },
         },
         label: {
           type: 'plain_text',
-          text: 'Assignee',
+          text: 'Thread Link',
           emoji: true,
         },
-        optional: true,
       },
-
-      // ========================================
-      // LABELS / CHANNELS (Optional)
-      // ========================================
-      {
-        type: 'input',
-        block_id: 'labels_block',
-        element: {
-          type: 'multi_conversations_select',
-          action_id: 'labels_input',
-          placeholder: {
-            type: 'plain_text',
-            text: 'Select channels for labels',
-          },
-        },
-        label: {
-          type: 'plain_text',
-          text: 'Labels / Channels',
-          emoji: true,
-        },
-        optional: true,
-      },
-
-      // ========================================
-      // DIVIDER
-      // ========================================
-      {
-        type: 'divider',
-      },
-
       // ========================================
       // HINT
       // ========================================
@@ -203,7 +53,7 @@ function handleCreateTaskModal(container = {}, prefilledData = {}) {
         elements: [
           {
             type: 'mrkdwn',
-            text: 'Fields marked with * are required.',
+            text: 'Paste a Slack thread link to auto-fill task details from that thread.',
           },
         ],
       },

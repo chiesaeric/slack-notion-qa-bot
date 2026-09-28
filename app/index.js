@@ -19,9 +19,11 @@ const userToken = process.env.SLACK_USER_TOKEN;
 function extractDataFromThread(messages) {
   let projectName = '';
   let dueDate = '';
+  let description = '';
   
-  // Combine all message texts
-  const fullText = messages.map(m => m.text || '').join(' ');
+  // Combine all message texts (exclude bot's own messages)
+  const userMessages = messages.filter(m => !m.bot_id);
+  const fullText = userMessages.map(m => m.text || '').join('\n');
   
   // Pattern untuk project name
   const projectPatterns = [
@@ -38,7 +40,7 @@ function extractDataFromThread(messages) {
     }
   }
   
-  // Pattern untuk due date (YYYY-MM-DD or DD-MM-YYYY or DD/MM/YYYY)
+  // Pattern untuk due date
   const dueDatePatterns = [
     /due\s*date[:\s]+(\d{4}-\d{2}-\d{2})/i,
     /due[:\s]+(\d{4}-\d{2}-\d{2})/i,
@@ -51,7 +53,6 @@ function extractDataFromThread(messages) {
     const match = fullText.match(pattern);
     if (match && match[1]) {
       dueDate = match[1].trim();
-      // Convert DD-MM-YYYY or DD/MM/YYYY to YYYY-MM-DD
       if (dueDate.includes('-') && dueDate.split('-')[0].length === 2) {
         const [d, m, y] = dueDate.split('-');
         dueDate = `${y}-${m}-${d}`;
@@ -63,7 +64,39 @@ function extractDataFromThread(messages) {
     }
   }
   
-  return { projectName, dueDate };
+  // Description: use full text or first part
+  if (userMessages.length > 0) {
+    // Get first user's message that is not empty
+    const firstMsg = userMessages[0].text || '';
+    description = firstMsg;
+  }
+  
+  return { projectName, dueDate, description };
+}
+
+// ============================================
+// HELPER: Parse Slack thread URL to get channel & thread ts
+// ============================================
+function parseThreadLink(threadLink) {
+  // Formats:
+  // https://xxx.slack.com/archives/CHANNEL_ID/pTIMESTAMP
+  // https://xxx.slack.com/archives/CHANNEL_ID/pTIMESTAMP?thread_ts=...
+  
+  const patterns = [
+    /archives\/([A-Z0-9]+)\/p([A-Z0-9]+)/i,
+    /channels\/([A-Z0-9]+)\/([0-9]+\.[0-9]+)/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = threadLink.match(pattern);
+    if (match) {
+      return {
+        channelId: match[1],
+        threadTs: match[2].replace(/^0+/, '').replace(/(\d{10})(\d{6})/, '$1.$2'),
+      };
+    }
+  }
+  return null;
 }
 
 // ============================================
@@ -83,102 +116,189 @@ app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
 });
 
 // ============================================
-// APP MENTION IN THREAD
-// Parse thread and respond with pre-filled button
-// ============================================
-app.event('app_mention', async ({ event, client }) => {
-  const channelId = event.channel;
-  const threadTs = event.thread_ts || event.event_ts;
-
-  try {
-    // Fetch thread messages using user token
-    const threadReplies = await client.conversations.replies({
-      channel: channelId,
-      ts: threadTs,
-      limit: 20,
-    }, { token: userToken });
-
-    // Extract data from thread
-    const messages = threadReplies.messages || [];
-    const { projectName, dueDate } = extractDataFromThread(messages);
-
-    // Prefilled data
-    const prefilledData = {
-      projectName: projectName || '',
-      dueDate: dueDate || '',
-    };
-
-    // Reply in thread with a button
-    await client.chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
-      text: 'Hi! Click the button below to create a QA task in Notion.',
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `👋 *QA Bot*\nCreate a new task in Notion by clicking the button below.${projectName || dueDate ? '\n\n📋 *Detected from thread:*' : ''}${projectName ? `\n• Project: ${projectName}` : ''}${dueDate ? `\n• Due Date: ${dueDate}` : ''}`,
-          },
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: '➕ Create Task',
-                emoji: true,
-              },
-              action_id: 'create_task_button',
-              style: 'primary',
-              value: JSON.stringify(prefilledData),
-            },
-          ],
-        },
-      ],
-    });
-  } catch (error) {
-    console.error('Error responding to app mention:', error);
-  }
-});
-
-// ============================================
-// BUTTON CLICK HANDLER - Opens Modal with Prefilled Data
-// ============================================
-app.action('create_task_button', async ({ ack, body, client }) => {
-  await ack();
-
-  try {
-    // Parse prefilled data from button value
-    let prefilledData = { projectName: '', dueDate: '' };
-    try {
-      if (body.actions && body.actions[0] && body.actions[0].value) {
-        prefilledData = JSON.parse(body.actions[0].value);
-      }
-    } catch (e) {
-      // Ignore parse errors, use empty data
-    }
-
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: handleCreateTaskModal({}, prefilledData),
-    });
-  } catch (error) {
-    console.error('Error opening modal from button:', error);
-  }
-});
-
-// ============================================
-// MODAL SUBMISSION HANDLER
+// VIEW SUBMISSION - Parse thread link and update modal
 // ============================================
 app.view('create_task_modal', async ({ ack, body, client }) => {
-  const userId = body.user.id;
+  const values = body.view.state.values;
   
+  const threadLink = values.thread_link_block?.thread_link_input?.value || '';
+  
+  // Get channel and thread info for later reply
   const channelId = body.container?.channel_id;
   const threadTs = body.container?.thread_ts || body.container?.message_ts;
 
+  // If no thread link, just create task directly
+  if (!threadLink) {
+    await handleTaskCreation({ ack, body, client, channelId, threadTs });
+    return;
+  }
+
+  // Parse thread link
+  const parsed = parseThreadLink(threadLink);
+  
+  if (!parsed) {
+    // Invalid link format
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Invalid Thread Link', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Invalid thread link format*\n\nPlease use a valid Slack thread link:\n\`https://xxx.slack.com/archives/.../p...\`\n\n<thread_link> example:\n\`https://company.slack.com/archives/C012345/p9876543210\``,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+    return;
+  }
+
+  try {
+    // Fetch thread messages
+    const threadReplies = await client.conversations.replies(
+      { channel: parsed.channelId, ts: parsed.threadTs, limit: 50 },
+      { token: userToken }
+    );
+
+    const messages = threadReplies.messages || [];
+    const { projectName, dueDate, description } = extractDataFromThread(messages);
+
+    // Update modal with extracted data
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        callback_id: 'create_task_modal_final',
+        title: { type: 'plain_text', text: 'Create QA Task', emoji: true },
+        blocks: [
+          // Thread Link (readonly or editable)
+          {
+            type: 'input',
+            block_id: 'thread_link_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'thread_link_input',
+              initial_value: threadLink,
+            },
+            label: { type: 'plain_text', text: 'Thread Link', emoji: true },
+          },
+          // Project Name
+          {
+            type: 'input',
+            block_id: 'task_name_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'task_name_input',
+              placeholder: { type: 'plain_text', text: 'Enter task name...' },
+              initial_value: projectName || '',
+            },
+            label: { type: 'plain_text', text: 'Task Name *', emoji: true },
+          },
+          // Description
+          {
+            type: 'input',
+            block_id: 'description_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'description_input',
+              placeholder: { type: 'plain_text', text: 'Enter task description...' },
+              multiline: true,
+              initial_value: description || '',
+            },
+            label: { type: 'plain_text', text: 'Description', emoji: true },
+            optional: true,
+          },
+          // Priority
+          {
+            type: 'input',
+            block_id: 'priority_block',
+            element: {
+              type: 'static_select',
+              action_id: 'priority_input',
+              placeholder: { type: 'plain_text', text: 'Select priority' },
+              options: [
+                { text: { type: 'plain_text', text: '🔴 High', emoji: true }, value: 'High' },
+                { text: { type: 'plain_text', text: '🟡 Medium', emoji: true }, value: 'Medium' },
+                { text: { type: 'plain_text', text: '🟢 Low', emoji: true }, value: 'Low' },
+              ],
+            },
+            label: { type: 'plain_text', text: 'Priority *', emoji: true },
+          },
+          // Due Date
+          {
+            type: 'input',
+            block_id: 'due_date_block',
+            element: {
+              type: 'datepicker',
+              action_id: 'due_date_input',
+              placeholder: { type: 'plain_text', text: 'Select due date' },
+              initial_date: dueDate || undefined,
+            },
+            label: { type: 'plain_text', text: 'Due Date', emoji: true },
+            optional: true,
+          },
+          // Assignee
+          {
+            type: 'input',
+            block_id: 'assignee_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'assignee_input',
+              placeholder: { type: 'plain_text', text: 'Enter assignee name(s)...' },
+            },
+            label: { type: 'plain_text', text: 'Assignee', emoji: true },
+            optional: true,
+          },
+          // Labels
+          {
+            type: 'input',
+            block_id: 'labels_block',
+            element: {
+              type: 'multi_conversations_select',
+              action_id: 'labels_input',
+              placeholder: { type: 'plain_text', text: 'Select channels for labels' },
+            },
+            label: { type: 'plain_text', text: 'Labels / Channels', emoji: true },
+            optional: true,
+          },
+        ],
+        submit: { type: 'plain_text', text: 'Create', emoji: true },
+        close: { type: 'plain_text', text: 'Cancel', emoji: true },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching thread:', error);
+    
+    // Return modal with error message
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Error Reading Thread', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Could not read thread*\n\nError: ${error.message}\n\nPlease check:\n• Thread link is valid\n• Bot has access to that channel`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+  }
+});
+
+// ============================================
+// FINAL MODAL SUBMISSION - Create Notion Task
+// ============================================
+app.view('create_task_modal_final', async ({ ack, body, client }) => {
   const values = body.view.state.values;
   
   const taskName = values.task_name_block?.task_name_input?.value || '';
@@ -187,6 +307,10 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   const dueDate = values.due_date_block?.due_date_input?.selected_date || null;
   const assignee = values.assignee_block?.assignee_input?.value || '';
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
+
+  // Get channel/thread from container - these are from the ORIGINAL channel where modal was opened
+  const channelId = body.container?.channel_id;
+  const threadTs = body.container?.thread_ts || body.container?.message_ts;
 
   const priorityEmoji = priority === 'High' ? '🔴' : priority === 'Medium' ? '🟡' : '🟢';
 
@@ -200,15 +324,12 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
       labels,
     });
 
+    // Success modal
     await ack({
       response_action: 'update',
       view: {
         type: 'modal',
-        title: {
-          type: 'plain_text',
-          text: '✅ Task Created',
-          emoji: true,
-        },
+        title: { type: 'plain_text', text: '✅ Task Created', emoji: true },
         blocks: [
           {
             type: 'section',
@@ -225,19 +346,16 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             },
           },
         ],
-        close: {
-          type: 'plain_text',
-          text: 'Close',
-          emoji: true,
-        },
+        close: { type: 'plain_text', text: 'Close', emoji: true },
       },
     });
 
+    // Reply to thread with Notion link
     if (channelId) {
       await client.chat.postMessage({
         channel: channelId,
         thread_ts: threadTs,
-        text: `✅ *Task created!*\n> *Name:* ${taskName}\n> *Priority:* ${priorityEmoji} ${priority}\n> *Notion Page:* ${notionResult.url}`,
+        text: `✅ *Task Created!*\n\n> *Project:* ${taskName}${assignee ? `\n> *Assignee:* ${assignee}` : ''}\n> *Priority:* ${priorityEmoji} ${priority}\n> 🔗 <${notionResult.url}|Open in Notion>`,
       });
     }
 
@@ -248,11 +366,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
       response_action: 'update',
       view: {
         type: 'modal',
-        title: {
-          type: 'plain_text',
-          text: '❌ Error',
-          emoji: true,
-        },
+        title: { type: 'plain_text', text: '❌ Error', emoji: true },
         blocks: [
           {
             type: 'section',
@@ -262,11 +376,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             },
           },
         ],
-        close: {
-          type: 'plain_text',
-          text: 'Close',
-          emoji: true,
-        },
+        close: { type: 'plain_text', text: 'Close', emoji: true },
       },
     });
   }
@@ -284,20 +394,14 @@ app.event('app_home_opened', async ({ event, client }) => {
         blocks: [
           {
             type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*QA Bot*\nCreate tasks in Notion via Slack',
-            },
+            text: { type: 'mrkdwn', text: '*QA Bot*\nCreate tasks in Notion via Slack' },
           },
           {
             type: 'actions',
             elements: [
               {
                 type: 'button',
-                text: {
-                  type: 'plain_text',
-                  text: 'Create Task',
-                },
+                text: { type: 'plain_text', text: 'Create Task' },
                 action_id: 'open_create_modal',
               },
             ],
@@ -315,7 +419,6 @@ app.event('app_home_opened', async ({ event, client }) => {
 // ============================================
 app.action('open_create_modal', async ({ ack, body, client }) => {
   await ack();
-
   try {
     await client.views.open({
       trigger_id: body.trigger_id,
