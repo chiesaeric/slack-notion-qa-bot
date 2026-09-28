@@ -722,32 +722,32 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
   // ============================================
   // Branch: In Staging / In Pre-staging (Report)
   // ============================================
+  const notionThreadLink = context?.notionThreadLink || '';
+  const notes = values.notes_block?.notes_input?.value || '';
+  const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
+  const coverageData = context?.coverageData || {};
+  const sheetName = context?.sheetName || '';
+
   console.log('=== Modal 3 Debug (Report) ===');
-  console.log('context keys:', context ? Object.keys(context) : 'null');
-  console.log('notionThreadLink:', context?.notionThreadLink);
+  console.log('notionThreadLink:', notionThreadLink);
   console.log('channelId:', channelId);
   console.log('threadTs:', threadTs);
   console.log('sheetName:', sheetName);
   console.log('coverageData:', coverageData);
   console.log('================================');
 
-  const notionThreadLink = context?.notionThreadLink || '';
   let replyChannelId = channelId;
   let replyThreadTs = threadTs;
 
   // Parse thread link from Notion if available
   if (notionThreadLink) {
     const parsed = parseThreadLink(notionThreadLink);
+    console.log('parsed thread:', parsed);
     if (parsed) {
       replyChannelId = parsed.channelId;
       replyThreadTs = parsed.threadTs;
     }
   }
-
-  const notes = values.notes_block?.notes_input?.value || '';
-  const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
-  const coverageData = context?.coverageData || {};
-  const sheetName = context?.sheetName || '';
 
   try {
     // Update Notion: status + progress from coverage
