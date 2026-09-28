@@ -304,7 +304,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             element: {
               type: 'plain_text_input',
               action_id: 'sheet_input',
-              placeholder: { type: 'plain_text', text: hasTestCase ? 'Wajib: Pre-Staging / Staging' : 'Opsional: untuk input manual' },
+              placeholder: { type: 'plain_text', text: hasTestCase ? 'Required: Pre-Staging / Staging' : 'Optional: for manual input' },
             },
             label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
             optional: true,
@@ -463,7 +463,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
           title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
           blocks: [{
             type: 'section',
-            text: { type: 'mrkdwn', text: '❌ *Sheet Name wajib diisi karena task ini punya Test Case*' },
+            text: { type: 'mrkdwn', text: '❌ *Sheet Name is required because this task has a Test Case*' },
           }],
           close: { type: 'plain_text', text: 'Close', emoji: true },
         },
