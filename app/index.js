@@ -651,6 +651,13 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
       return;
     }
 
+    // Debug logging
+    console.log('=== Google Sheets Debug ===');
+    console.log('testCaseUrl:', testCaseUrl);
+    console.log('env:', env);
+    console.log('spreadsheetId:', spreadsheetId);
+    console.log('==========================');
+
     // Fetch coverage data with timeout
     let coverageData;
     try {
