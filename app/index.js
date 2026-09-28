@@ -900,7 +900,7 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
 
     // Notion format
     let notionReport = `[Testing Report] ${taskName}\n`;
-    notionReport += `Date: ${today} Env: ${sheetName}\n`;
+    notionReport += `Date: ${today} Env: ${status}\n`;
     notionReport += `Total Coverage Test: ${coverageDisplay}%\n`;
     notionReport += `Testcases: ${testcasesFormatted}`;
     if (testCaseUrl) notionReport += ` (${testCaseUrl})`;
@@ -912,7 +912,7 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     // Slack format
     let slackReport = `📊 *[Testing Report] Name: ${taskName}*\n`;
     slackReport += `>Date: ${today}\n`;
-    slackReport += `>Env: ${sheetName}\n\n`;
+    slackReport += `>Env: ${status}\n\n`;
     slackReport += `*Total Coverage Test:* ${coverageDisplay}%\n`;
     slackReport += `Test Cases: ${testcasesFormatted}`;
     if (testCaseUrl) slackReport += ` (<${testCaseUrl}|link>)`;
