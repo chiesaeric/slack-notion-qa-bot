@@ -704,6 +704,8 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     const coverageFormatted = parseFloat(coverageData.coverage || 0).toFixed(2);
     const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
 
+    console.log('Pushing Modal 4...');
+
     // Push Modal 4 - Report Preview
     await ack({
       response_action: 'push',
