@@ -1019,9 +1019,9 @@ Testcases: ${testcases} (${testcaseLink ? `<${testcaseLink}|link>` : 'link'})
  Passed Test: ${coverageFormatted}%
 Failed Test: ${failed} cases
 Untested Test: ${untested} cases
-Total Coverage Test: ${coverageFormatted}%
+*Total Coverage Test:* ${coverageFormatted}%
 
-Notes:
+*Notes:*
 ${notes || ' '}
 
 cc: ${cc || ' '}`;
@@ -1062,8 +1062,8 @@ cc: ${cc || ' '}`;
     reportText += ` Passed Test: ${coverageFormatted}%\n`;
     reportText += `Failed Test: ${failed} cases\n`;
     reportText += `Untested Test: ${untested} cases\n`;
-    reportText += `Total Coverage Test: ${coverageFormatted}%\n\n`;
-    reportText += `Notes:\n${notes || ' '}\n\n`;
+    reportText += `*Total Coverage Test:* ${coverageFormatted}%\n\n`;
+    reportText += `*Notes:*\n${notes || ' '}\n\n`;
     reportText += `cc: ${cc || ' '}`;
 
     // Reply to thread if we have channel and thread_ts
