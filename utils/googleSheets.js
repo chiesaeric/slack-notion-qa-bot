@@ -65,6 +65,7 @@ async function fetchCells(spreadsheetId, sheetName, cells) {
  */
 async function fetchTestCoverageData(spreadsheetId, sheetName) {
   const cells = {
+    scopeTest: 'F5',
     coverage: 'F6',
     totalNotTested: 'I1',
     totalInTesting: 'I2',
@@ -75,6 +76,7 @@ async function fetchTestCoverageData(spreadsheetId, sheetName) {
   const data = await fetchCells(spreadsheetId, sheetName, cells);
   
   return {
+    scopeTest: data.scopeTest || '0',
     coverage: data.coverage || '0',
     totalNotTested: data.totalNotTested || '0',
     totalInTesting: data.totalInTesting || '0',

@@ -109,7 +109,7 @@ function handleUpdateTaskModal() {
 }
 
 /**
- * Initial modal - asks for Notion page link and environment (Report Task)
+ * Initial modal - asks for Notion page link and sheet name (Report Task)
  */
 function handleReportTaskModal() {
   return {
@@ -150,18 +150,18 @@ function handleReportTaskModal() {
       },
       {
         type: 'input',
-        block_id: 'env_block',
+        block_id: 'sheet_name_block',
         element: {
           type: 'plain_text_input',
-          action_id: 'env_input',
+          action_id: 'sheet_name_input',
           placeholder: {
             type: 'plain_text',
-            text: 'e.g., staging, production, dev',
+            text: 'e.g., Sheet1, Coverage, Test Report',
           },
         },
         label: {
           type: 'plain_text',
-          text: 'Environment',
+          text: 'Sheet Name',
           emoji: true,
         },
       },
@@ -170,7 +170,7 @@ function handleReportTaskModal() {
         elements: [
           {
             type: 'mrkdwn',
-            text: 'Paste a Notion page link and enter the environment to fetch test coverage data.',
+            text: 'Paste a Notion page link and enter the Google Sheet tab name to fetch test coverage data.',
           },
         ],
       },

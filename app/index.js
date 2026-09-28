@@ -723,9 +723,9 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
   const values = body.view.state.values;
   
   const notionLink = values.notion_link_block?.notion_link_input?.value || '';
-  const env = values.env_block?.env_input?.value || '';
+  const sheetName = values.sheet_name_block?.sheet_name_input?.value || '';
 
-  if (!notionLink || !env) {
+  if (!notionLink || !sheetName) {
     await ack({
       response_action: 'update',
       view: {
@@ -736,7 +736,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `❌ *Please fill in all fields*\n\n> Notion Link and Environment are required.`,
+              text: `❌ *Please fill in all fields*\n\n> Notion Link and Sheet Name are required.`,
             },
           },
         ],
@@ -783,10 +783,10 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
       notionPageId: pageId,
       notionLink: notionLink,
       threadLink: threadLink || '',
-      env: env,
+      sheetName: sheetName,
     });
 
-    // Push data entry modal with coverage data summary
+    // Push data entry modal
     await ack({
       response_action: 'push',
       view: {
@@ -798,7 +798,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `📋 *Task:* ${pageInfo.name || 'N/A'}\n🌍 *Env:* ${env}`,
+              text: `📋 *Task:* ${pageInfo.name || 'N/A'}`,
             },
           },
           {
@@ -806,53 +806,74 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
           },
           {
             type: 'input',
+            block_id: 'testcases_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'testcases_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 78' },
+            },
+            label: { type: 'plain_text', text: 'Testcases (count)', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'testcase_link_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'testcase_link_input',
+              placeholder: { type: 'plain_text', text: 'Paste test case spreadsheet link here...' },
+            },
+            label: { type: 'plain_text', text: 'Test Case Link', emoji: true },
+            optional: true,
+          },
+          {
+            type: 'input',
+            block_id: 'env_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'env_input',
+              placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
+            },
+            label: { type: 'plain_text', text: 'Environment', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'passed_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'passed_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 78' },
+            },
+            label: { type: 'plain_text', text: 'Passed (count)', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'failed_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'failed_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 0' },
+            },
+            label: { type: 'plain_text', text: 'Failed (count)', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'untested_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'untested_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 0' },
+            },
+            label: { type: 'plain_text', text: 'Untested (count)', emoji: true },
+          },
+          {
+            type: 'input',
             block_id: 'coverage_block',
             element: {
               type: 'plain_text_input',
               action_id: 'coverage_input',
-              placeholder: { type: 'plain_text', text: 'e.g., 85' },
+              placeholder: { type: 'plain_text', text: 'e.g., 100.00' },
             },
             label: { type: 'plain_text', text: 'Coverage (%)', emoji: true },
-          },
-          {
-            type: 'input',
-            block_id: 'total_passed_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'total_passed_input',
-              placeholder: { type: 'plain_text', text: 'e.g., 150' },
-            },
-            label: { type: 'plain_text', text: 'Total Passed', emoji: true },
-          },
-          {
-            type: 'input',
-            block_id: 'total_testing_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'total_testing_input',
-              placeholder: { type: 'plain_text', text: 'e.g., 20' },
-            },
-            label: { type: 'plain_text', text: 'Total In Testing', emoji: true },
-          },
-          {
-            type: 'input',
-            block_id: 'not_tested_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'not_tested_input',
-              placeholder: { type: 'plain_text', text: 'e.g., 30' },
-            },
-            label: { type: 'plain_text', text: 'Total Not Tested', emoji: true },
-          },
-          {
-            type: 'input',
-            block_id: 'total_failed_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'total_failed_input',
-              placeholder: { type: 'plain_text', text: 'e.g., 5' },
-            },
-            label: { type: 'plain_text', text: 'Total Failed', emoji: true },
           },
           {
             type: 'input',
@@ -911,11 +932,13 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
 app.view('report_task_modal_final', async ({ ack, body, client }) => {
   const values = body.view.state.values;
   
+  const testcases = values.testcases_block?.testcases_input?.value || '0';
+  const testcaseLink = values.testcase_link_block?.testcase_link_input?.value || '';
+  const env = values.env_block?.env_input?.value || '';
+  const passed = values.passed_block?.passed_input?.value || '0';
+  const failed = values.failed_block?.failed_input?.value || '0';
+  const untested = values.untested_block?.untested_input?.value || '0';
   const coverage = values.coverage_block?.coverage_input?.value || '0';
-  const totalPassed = values.total_passed_block?.total_passed_input?.value || '0';
-  const totalTesting = values.total_testing_block?.total_testing_input?.value || '0';
-  const notTested = values.not_tested_block?.not_tested_input?.value || '0';
-  const totalFailed = values.total_failed_block?.total_failed_input?.value || '0';
   const notes = values.notes_block?.notes_input?.value || '';
   const cc = values.cc_block?.cc_input?.value || '';
 
@@ -925,25 +948,29 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
   const notionPageId = context?.notionPageId;
   const notionLink = context?.notionLink;
   const threadLink = context?.threadLink;
-  const env = context?.env || '';
-
-  const total = parseInt(totalPassed) + parseInt(totalTesting) + parseInt(notTested) + parseInt(totalFailed);
+  const sheetName = context?.sheetName || '';
 
   try {
     // Add report as comment in Notion
     const { Client } = require('@notionhq/client');
     const notion = new Client({ auth: process.env.NOTION_API_KEY });
     
-    const reportContent = `📊 *Test Report - ${env}*
-${notes ? `📝 *Notes:* ${notes}` : ''}
-${cc ? `👥 *CC:* ${cc}` : ''}
-${'─'.repeat(20)}
-✅ *Passed:* ${totalPassed}
-🔄 *In Testing:* ${totalTesting}
-❌ *Not Tested:* ${notTested}
-❌ *Failed:* ${totalFailed}
-${'─'.repeat(20)}
-📈 *Coverage:* ${coverage}%`;
+    const testcaseFormatted = testcaseLink ? `<${testcaseLink}|Testcases: ${testcases}>` : `Testcases: ${testcases}`;
+    
+    const reportContent = `[Testing Report BO] Bank Validity Status Feedback
+Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+Env: ${env}
+
+Testcases: ${testcases} (${testcaseLink ? `<${testcaseLink}|link>` : 'link'})
+ Passed Test: ${coverage}%
+Failed Test: ${failed}%
+Untested Test: ${untested}%
+Total Coverage Test: ${coverage}%
+
+Notes:
+${notes || ' '}
+
+cc: ${cc || ' '}`;
 
     await notion.comments.create({
       parent: { page_id: notionPageId },
@@ -970,15 +997,22 @@ ${'─'.repeat(20)}
     }
 
     // Build report message
-    let reportText = `📊 *Test Report - ${env}*\n\n`;
-    reportText += `✅ *Passed:* ${totalPassed}\n`;
-    reportText += `🔄 *In Testing:* ${totalTesting}\n`;
-    reportText += `❌ *Not Tested:* ${notTested}\n`;
-    reportText += `❌ *Failed:* ${totalFailed}\n`;
-    reportText += `${'─'.repeat(20)}\n`;
-    reportText += `📈 *Coverage:* ${coverage}%\n\n`;
-    if (notes) reportText += `📝 *Notes:* ${notes}\n`;
-    if (cc) reportText += `👥 *CC:* ${cc}\n`;
+    const testcaseLine = testcaseLink 
+      ? `Testcases: ${testcases} (<${testcaseLink}|link>)` 
+      : `Testcases: ${testcases} (link)`;
+    
+    let reportText = `*[Testing Report BO] Bank Validity Status Feedback*\n`;
+    reportText += `\`\`\`\n`;
+    reportText += `Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n`;
+    reportText += `Env: ${env}\n\n`;
+    reportText += `${testcaseLine}\n`;
+    reportText += ` Passed Test: ${coverage}%\n`;
+    reportText += `Failed Test: ${failed}%\n`;
+    reportText += `Untested Test: ${untested}%\n`;
+    reportText += `Total Coverage Test: ${coverage}%\n\n`;
+    reportText += `Notes:\n${notes || ' '}\n\n`;
+    reportText += `cc: ${cc || ' '}\n`;
+    reportText += `\`\`\`\n`;
     reportText += `🔗 <${notionLink}|Open in Notion>`;
 
     // Reply to thread if we have channel and thread_ts
