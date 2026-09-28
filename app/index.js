@@ -298,7 +298,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             element: {
               type: 'plain_text_input',
               action_id: 'sheet_input',
-              placeholder: hasTestCase ? 'Wajib: Pre-Staging / Staging' : 'Opsional: untuk input manual',
+              placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
             },
             label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
             optional: true,
