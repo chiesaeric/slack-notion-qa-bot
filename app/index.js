@@ -24,7 +24,7 @@ function getStatusEmoji(status) {
     'Not Started': '⭕',
     'Created Test Plan': '📋',
     'In Staging': '🔄',
-    'In Pre-staging': '🔄',
+    'In Prestaging': '🔄',
     'Ready to Release': '✅',
     'Released': '🚀',
   };
@@ -281,7 +281,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
               options: [
                 { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
                 { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
-                { text: { type: 'plain_text', text: '🧪 In Pre-staging', emoji: true }, value: 'In Pre-staging' },
+                { text: { type: 'plain_text', text: '🧪 In Prestaging', emoji: true }, value: 'In Prestaging' },
                 { text: { type: 'plain_text', text: '🧪 In Staging', emoji: true }, value: 'In Staging' },
                 { text: { type: 'plain_text', text: '✅ Ready to Release', emoji: true }, value: 'Ready to Release' },
                 { text: { type: 'plain_text', text: '🚀 Released', emoji: true }, value: 'Released' },
@@ -305,7 +305,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             elements: [
               {
                 type: 'mrkdwn',
-                text: '*Required for In Staging or In Pre-staging*',
+                text: '*Required for In Staging or In Prestaging*',
               },
             ],
           },
@@ -424,10 +424,10 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   }
 
   // ============================================
-  // Branch: In Staging or In Pre-staging
+  // Branch: In Staging or In Prestaging
   // Fetch coverage → Modal 3 (Coverage preview + Notes + CC)
   // ============================================
-  if (status === 'In Staging' || status === 'In Pre-staging') {
+  if (status === 'In Staging' || status === 'In Prestaging') {
     // Validate sheet name required
     if (!sheetName) {
       await ack({
@@ -437,7 +437,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
           title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
           blocks: [{
             type: 'section',
-            text: { type: 'mrkdwn', text: '❌ *Sheet Name is required for In Staging or In Pre-staging*' },
+            text: { type: 'mrkdwn', text: '❌ *Sheet Name is required for In Staging or In Prestaging*' },
           }],
           close: { type: 'plain_text', text: 'Close', emoji: true },
         },
@@ -606,7 +606,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   const statusEmoji = {
     'Not Started': '⭕',
     'Created Test Plan': '📋',
-    'In Pre-staging': '🧪',
+    'In Prestaging': '🧪',
     'In Staging': '🧪',
     'Ready to Release': '✅',
     'Released': '🚀',
@@ -696,7 +696,7 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     const statusEmoji = {
       'Not Started': '⭕',
       'Created Test Plan': '📋',
-      'In Pre-staging': '🧪',
+      'In Prestaging': '🧪',
       'In Staging': '🧪',
       'Ready to Release': '✅',
       'Released': '🚀',
@@ -762,7 +762,7 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
   }
 
   // ============================================
-  // Branch: In Staging / In Pre-staging (Report)
+  // Branch: In Staging / In Prestaging (Report)
   // ============================================
   const notionThreadLink = context?.notionThreadLink || '';
   const notes = values.notes_block?.notes_input?.value || '';
