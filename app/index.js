@@ -281,8 +281,8 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
               options: [
                 { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
                 { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
-                { text: { type: 'plain_text', text: '🔄 In Pre-staging', emoji: true }, value: 'In Pre-staging' },
-                { text: { type: 'plain_text', text: '🔄 In Staging', emoji: true }, value: 'In Staging' },
+                { text: { type: 'plain_text', text: '🧪 In Pre-staging', emoji: true }, value: 'In Pre-staging' },
+                { text: { type: 'plain_text', text: '🧪 In Staging', emoji: true }, value: 'In Staging' },
                 { text: { type: 'plain_text', text: '✅ Ready to Release', emoji: true }, value: 'Ready to Release' },
                 { text: { type: 'plain_text', text: '🚀 Released', emoji: true }, value: 'Released' },
               ],
@@ -602,6 +602,17 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   // ============================================
   // Get thread info from Notion Slack Thread property
   const notionThreadLink = context?.notionThreadLink || '';
+  // Status emoji mapping
+  const statusEmoji = {
+    'Not Started': '⭕',
+    'Created Test Plan': '📋',
+    'In Pre-staging': '🧪',
+    'In Staging': '🧪',
+    'Ready to Release': '✅',
+    'Released': '🚀',
+  };
+  const statusIcon = statusEmoji[status] || '';
+
   console.log('=== Modal 2 Debug (Ready to Release) ===');
   console.log('context:', JSON.stringify(context));
   console.log('notionThreadLink:', notionThreadLink);
@@ -633,7 +644,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
       await client.chat.postMessage({
         channel: replyChannelId,
         thread_ts: replyThreadTs,
-        text: `:arrows_counterclockwise: *Task Updated!*\n\nStatus: ${status}\n:link: <${notionLink}|Open in Notion>`,
+        text: `:arrows_counterclockwise: *Task Updated!*\n\nStatus: ${statusIcon} ${status}\n:link: <${notionLink}|Open in Notion>`,
       });
       console.log('Message posted successfully');
     } else {
@@ -681,6 +692,17 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
 
     // Get thread info from Notion Slack Thread property
     const notionThreadLink = context?.notionThreadLink || '';
+    // Status emoji mapping
+    const statusEmoji = {
+      'Not Started': '⭕',
+      'Created Test Plan': '📋',
+      'In Pre-staging': '🧪',
+      'In Staging': '🧪',
+      'Ready to Release': '✅',
+      'Released': '🚀',
+    };
+    const statusIcon = statusEmoji[status] || '';
+
     console.log('=== Modal 3 Debug (Created Test Plan) ===');
     console.log('notionThreadLink:', notionThreadLink);
     console.log('channelId:', channelId);
@@ -718,7 +740,7 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
         await client.chat.postMessage({
           channel: replyChannelId,
           thread_ts: replyThreadTs,
-          text: `:arrows_counterclockwise: *Task Updated!*\n\nStatus: ${status}\nProgress: ${progress || 0}%\n:link: <${notionLink}|Open in Notion>`,
+          text: `:arrows_counterclockwise: *Task Updated!*\n\nStatus: ${statusIcon} ${status}\nProgress: ${progress || 0}%\n:link: <${notionLink}|Open in Notion>`,
         });
       }
     } catch (error) {
@@ -807,7 +829,7 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     if (notes) notionReport += `\nNotes: ${notes}`;
 
     // Slack format
-    let slackReport = `*[Testing Report] Name: ${taskName}*\n`;
+    let slackReport = `📊 *[Testing Report] Name: ${taskName}*\n`;
     slackReport += `>Date: ${today}\n`;
     slackReport += `>Env: ${sheetName}\n\n`;
     slackReport += `*Total Coverage Test:* ${coverageDisplay}%\n`;
