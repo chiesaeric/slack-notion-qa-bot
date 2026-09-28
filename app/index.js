@@ -475,47 +475,74 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
       return;
     }
 
-    // Update Notion: status + progress from coverage
-    const coverageFormatted = parseFloat(coverageData.coverage || 0);
-    await updateNotionTaskStatus(notionPageId, status, coverageFormatted);
+    // Store in context for Modal 3
+    modalContext.set(body.user.id, {
+      ...context,
+      updateStatus: status,
+      updateProgress: progress,
+      sheetName: sheetName,
+      coverageData: coverageData,
+    });
 
-    await ack({ response_action: 'clear' });
-
-    // Build report message
-    const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    // Push Modal 3 with pre-filled coverage data
+    const coverageFormatted = parseFloat(coverageData.coverage || 0).toFixed(2);
     const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
 
-    const reportMsg = `*[Testing Report] ${taskName}*
-> Date: ${today}
-> Env: ${sheetName}
-
-> *Total Coverage Test:* ${coverageFormatted.toFixed(2)}%
-
-Test Cases: ${testcasesFormatted}
-Passed Test: ${coverageData.totalPassed || 0} cases
-Failed Test: ${coverageData.totalFailed || 0} cases
-Untested Test: ${coverageData.totalNotTested || 0} cases`;
-
-    // Determine where to post
-    let replyChannelId = channelId;
-    let replyThreadTs = threadTs;
-
-    if (threadLink) {
-      const parsed = parseThreadLink(threadLink);
-      if (parsed) {
-        replyChannelId = parsed.channelId;
-        replyThreadTs = parsed.threadTs;
-      }
-    }
-
-    if (replyChannelId && replyThreadTs) {
-      await client.chat.postMessage({
-        channel: replyChannelId,
-        thread_ts: replyThreadTs,
-        text: reportMsg,
-      });
-    }
-
+    await ack({
+      response_action: 'push',
+      view: {
+        type: 'modal',
+        callback_id: 'update_task_modal_step3',
+        title: { type: 'plain_text', text: 'Report Coverage', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📋 *Task:* ${taskName}\n> Status: *${status}*`,
+            },
+          },
+          {
+            type: 'divider',
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*[Testing Report]*\n> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n> Env: ${sheetName}\n\n> *Total Coverage Test:* ${coverageFormatted}%\n\nTest Cases: ${testcasesFormatted}\nPassed Test: ${coverageData.totalPassed || 0} cases\nFailed Test: ${coverageData.totalFailed || 0} cases\nUntested Test: ${coverageData.totalNotTested || 0} cases`,
+            },
+          },
+          {
+            type: 'divider',
+          },
+          {
+            type: 'input',
+            block_id: 'notes_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'notes_input',
+              placeholder: { type: 'plain_text', text: 'Enter any additional notes...' },
+              multiline: true,
+            },
+            label: { type: 'plain_text', text: 'Notes', emoji: true },
+            optional: true,
+          },
+          {
+            type: 'input',
+            block_id: 'cc_block',
+            element: {
+              type: 'multi_conversations_select',
+              action_id: 'cc_input',
+              placeholder: { type: 'plain_text', text: 'Select people to notify...' },
+            },
+            label: { type: 'plain_text', text: 'CC (Slack mentions)', emoji: true },
+            optional: true,
+          },
+        ],
+        submit: { type: 'plain_text', text: 'Submit Report', emoji: true },
+        close: { type: 'plain_text', text: 'Cancel', emoji: true },
+      },
+    });
     return;
   }
 
@@ -620,14 +647,13 @@ Untested Test: ${coverageData.totalNotTested || 0} cases`;
 });
 
 // ============================================
-// VIEW SUBMISSION - Modal 3: Handles both Created Test Plan and Report flows
+// VIEW SUBMISSION - Modal 3: Report with Notes + CC
 // ============================================
 app.view('update_task_modal_step3', async ({ ack, body, client }) => {
   const values = body.view.state.values;
 
-  const testCaseUrl = values.testcase_block?.testcase_input?.value || '';
-  const env = values.env_block?.env_input?.value || '';
-  const progress = values.progress_block?.progress_input?.value || '';
+  const notes = values.notes_block?.notes_input?.value || '';
+  const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
 
   const context = modalContext.get(body.user.id);
   const status = context?.updateStatus;
@@ -637,237 +663,40 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
   const channelId = context?.channelId;
   const threadTs = context?.threadTs;
   const taskName = context?.taskName || 'N/A';
-
-  // Store values
-  modalContext.set(body.user.id, {
-    ...context,
-    updateProgress: progress,
-    updateTestCase: testCaseUrl,
-  });
-
-  // ============================================
-  // FLOW: Created Test Plan (no env field)
-  // Update + reply status
-  // ============================================
-  if (status === 'Created Test Plan') {
-    // Validate: Test Case URL is required
-    if (!testCaseUrl) {
-      await ack({
-        response_action: 'update',
-        view: {
-          type: 'modal',
-          title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: '❌ *Test Case URL is required*',
-              },
-            },
-          ],
-          close: { type: 'plain_text', text: 'Close', emoji: true },
-        },
-      });
-      return;
-    }
-
-    try {
-      // Update Notion: status + progress + test case
-      await updateNotionTaskStatus(notionPageId, status, progress ? parseInt(progress, 10) : null);
-
-      const { Client } = require('@notionhq/client');
-      const notion = new Client({ auth: process.env.NOTION_API_KEY });
-      await notion.pages.update({
-        page_id: notionPageId,
-        properties: {
-          'Test Case': { url: testCaseUrl },
-        },
-      });
-
-      await ack({ response_action: 'clear' });
-
-      // Determine where to post
-      let replyChannelId = channelId;
-      let replyThreadTs = threadTs;
-
-      if (threadLink) {
-        const parsed = parseThreadLink(threadLink);
-        if (parsed) {
-          replyChannelId = parsed.channelId;
-          replyThreadTs = parsed.threadTs;
-        }
-      }
-
-      if (replyChannelId && replyThreadTs) {
-        await client.chat.postMessage({
-          channel: replyChannelId,
-          thread_ts: replyThreadTs,
-          text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> Progress: ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
-        });
-      }
-    } catch (error) {
-      console.error('Error updating task:', error);
-      await ack({
-        response_action: 'update',
-        view: {
-          type: 'modal',
-          title: { type: 'plain_text', text: '❌ Error', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `❌ *Failed to update task*\n\nError: ${error.message}`,
-              },
-            },
-          ],
-          close: { type: 'plain_text', text: 'Close', emoji: true },
-        },
-      });
-    }
-    return;
-  }
-
-  // ============================================
-  // FLOW: In Staging / In Pre-staging (has env field)
-  // Fetch coverage → Modal 4
-  // ============================================
-  if (!env) {
-    await ack({
-      response_action: 'update',
-      view: {
-        type: 'modal',
-        title: { type: 'plain_text', text: '❌ Error', emoji: true },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '❌ *Environment / Sheet Name is required*',
-            },
-          },
-        ],
-        close: { type: 'plain_text', text: 'Close', emoji: true },
-      },
-    });
-    return;
-  }
+  const coverageData = context?.coverageData || {};
+  const sheetName = context?.sheetName || '';
 
   try {
-    // Parse spreadsheet ID
-    const spreadsheetId = parseSpreadsheetUrl(testCaseUrl);
-    if (!spreadsheetId) {
-      await ack({
-        response_action: 'update',
-        view: {
-          type: 'modal',
-          title: { type: 'plain_text', text: '❌ Invalid URL', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: '❌ *Invalid Test Case URL*\n\nPlease provide a valid Google Sheets URL.',
-              },
-            },
-          ],
-          close: { type: 'plain_text', text: 'Close', emoji: true },
-        },
-      });
-      return;
-    }
-
-    // Debug logging
-    console.log('=== Google Sheets Debug ===');
-    console.log('testCaseUrl:', testCaseUrl);
-    console.log('env:', env);
-    console.log('spreadsheetId:', spreadsheetId);
-    console.log('==========================');
-
-    // Fetch coverage data with timeout
-    let coverageData;
-    try {
-      console.log('Calling fetchTestCoverageData...');
-      coverageData = await Promise.race([
-        fetchTestCoverageData(spreadsheetId, env),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), 8000),
-        ),
-      ]);
-      console.log('fetchTestCoverageData result:', coverageData);
-    } catch (apiError) {
-      console.error('Google Sheets API error:', apiError.message);
-      console.error('Full error:', apiError);
-      await ack({
-        response_action: 'update',
-        view: {
-          type: 'modal',
-          title: { type: 'plain_text', text: '❌ Connection Error', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `❌ *Could not fetch coverage data*\n\nError: ${apiError.message}\n\nPlease check:\n1. The Google Sheet is shared with the service account\n2. The sheet name "${env}" exists\n3. Try again in a moment`,
-              },
-            },
-          ],
-          close: { type: 'plain_text', text: 'Close', emoji: true },
-        },
-      });
-      return;
-    }
-
-    console.log('Storing in context...');
-    // Store in context
-    modalContext.set(body.user.id, {
-      ...context,
-      testCaseUrl: testCaseUrl,
-      env: env,
-      coverageData: coverageData,
-    });
-    console.log('Context stored');
-
-    // Format coverage for display
-    const coverageFormatted = parseFloat(coverageData.coverage || 0).toFixed(2);
-    const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
-
-    // ============================================
-    // SKIP Modal 4 - Direct update + reply
-    // views.push seems blocked in this environment
-    // ============================================
-
     // Update Notion: status + progress from coverage
+    const coverageFormatted = parseFloat(coverageData.coverage || 0);
     await updateNotionTaskStatus(notionPageId, status, coverageFormatted);
-
-    // Update Test Case URL in Notion if provided
-    if (testCaseUrl) {
-      const { Client } = require('@notionhq/client');
-      const notion = new Client({ auth: process.env.NOTION_API_KEY });
-      await notion.pages.update({
-        page_id: notionPageId,
-        properties: {
-          'Test Case': { url: testCaseUrl },
-        },
-      });
-    }
 
     await ack({ response_action: 'clear' });
 
     // Build report message
     const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const coverageDisplay = coverageFormatted.toFixed(2);
+    const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
 
-    const reportMsg = `*[Testing Report] ${taskName}*
+    let reportMsg = `*[Testing Report] ${taskName}*
 > Date: ${today}
-> Env: ${env}
+> Env: ${sheetName}
 
-> *Total Coverage Test:* ${coverageFormatted}%
+> *Total Coverage Test:* ${coverageDisplay}%
 
 Test Cases: ${testcasesFormatted}
 Passed Test: ${coverageData.totalPassed || 0} cases
 Failed Test: ${coverageData.totalFailed || 0} cases
 Untested Test: ${coverageData.totalNotTested || 0} cases`;
+
+    if (notes) {
+      reportMsg += `\n\n*Notes:*\n${notes}`;
+    }
+
+    if (ccUsers.length > 0) {
+      const ccFormatted = ccUsers.map(u => `<@${u}>`).join(' ');
+      reportMsg += `\n\ncc: ${ccFormatted}`;
+    }
 
     // Determine where to post
     let replyChannelId = channelId;
@@ -881,7 +710,6 @@ Untested Test: ${coverageData.totalNotTested || 0} cases`;
       }
     }
 
-    // Reply with report in thread
     if (replyChannelId && replyThreadTs) {
       await client.chat.postMessage({
         channel: replyChannelId,
@@ -889,12 +717,8 @@ Untested Test: ${coverageData.totalNotTested || 0} cases`;
         text: reportMsg,
       });
     }
-
-    console.log('Report sent successfully');
-    return;
   } catch (error) {
-    console.error('Error fetching coverage data:', error);
-
+    console.error('Error submitting report:', error);
     await ack({
       response_action: 'update',
       view: {
@@ -905,7 +729,7 @@ Untested Test: ${coverageData.totalNotTested || 0} cases`;
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `❌ *Could not fetch coverage data*\n\nError: ${error.message}\n\nMake sure:\n1. The Google Sheet is shared with the service account\n2. The sheet name "${env}" exists in the spreadsheet`,
+              text: `❌ *Failed to submit report*\n\nError: ${error.message}`,
             },
           },
         ],
