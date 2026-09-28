@@ -643,7 +643,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
           {
             type: 'input',
             block_id: 'progress_block',
-            element: { type: 'plain_text_input', action_id: 'progress_input', placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' }, initial_value: String(existingProgress) },
+            element: { type: 'plain_text_input', action_id: 'progress_input', placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' }, initial_value: String(context?.progress || 0) },
             label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
           },
           {
