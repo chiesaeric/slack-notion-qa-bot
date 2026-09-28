@@ -1005,25 +1005,8 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
 
   try {
     // Add report as comment in Notion
-    const { Client } = require('@notionhq/client');
-    const notion = new Client({ auth: process.env.NOTION_API_KEY });
+    // No Notion comment - thread link stored in page property
     
-    const testcaseLine = `${testcasesFormatted}`;
-    
-    const reportTitle = `[Testing Report] ${taskName}`;
-    
-    const reportContent = `${reportTitle}\nDate: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} Env: ${env}\nTotal Coverage Test: ${coverageFormatted}%\nTest Cases: ${testcaseLine}\nPassed Test: ${passed} cases\nFailed Test: ${failed} cases\nUntested Test: ${untested} cases\nNotes: ${notes || '-'}`;
-
-    await notion.comments.create({
-      parent: { page_id: notionPageId },
-      rich_text: [
-        {
-          type: 'text',
-          text: { content: reportContent },
-        },
-      ],
-    });
-
     await ack({ response_action: 'clear' });
 
     // Determine where to reply

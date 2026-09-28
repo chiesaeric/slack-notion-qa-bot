@@ -49,29 +49,17 @@ async function createNotionTask(taskData) {
     };
   }
 
+  // Store Slack thread link in Slack Thread property (URL type)
+  if (threadLink) {
+    properties['Slack Thread'] = {
+      url: threadLink,
+    };
+  }
+
   const response = await notion.pages.create({
     parent: { database_id: DATABASE_ID },
     properties: properties,
   });
-
-  // Add thread link as comment
-  if (threadLink) {
-    try {
-      await notion.comments.create({
-        parent: { page_id: response.id },
-        rich_text: [
-          { type: 'text', text: { content: 'Link Request: ' } },
-          {
-            type: 'text',
-            link: { url: threadLink },
-            text: { content: threadLink },
-          },
-        ],
-      });
-    } catch (commentError) {
-      console.error('Error creating comment:', commentError);
-    }
-  }
 
   return {
     id: response.id,
@@ -85,22 +73,17 @@ async function createNotionTask(taskData) {
 // ============================================
 async function getThreadLinkFromPage(pageId) {
   try {
-    const comments = await notion.comments.list({ block_id: pageId });
+    const page = await notion.pages.retrieve({ page_id: pageId });
+    const props = page.properties;
     
-    for (const comment of comments.results) {
-      const textContent = comment.rich_text
-        .map(block => block.plain_text)
-        .join('');
-      
-      // Look for Slack URL pattern
-      const slackMatch = textContent.match(/https:\/\/[\w.-]+\.slack\.com\/archives\/[\w]+\/p[\w]+/);
-      if (slackMatch) {
-        return slackMatch[0];
-      }
+    // Get from Slack Thread property (URL type)
+    if (props['Slack Thread']?.url) {
+      return props['Slack Thread'].url;
     }
+    
     return null;
   } catch (error) {
-    console.error('Error getting thread link:', error);
+    console.error('Error getting thread link from page:', error);
     return null;
   }
 }
@@ -147,6 +130,7 @@ async function getPageInfo(pageId) {
     status: props.Status?.status?.name || '',
     progress: props.Number?.number || 0,
     testCaseUrl: props['Test Case']?.url || '',
+    slackThread: props['Slack Thread']?.url || '',
   };
 }
 
