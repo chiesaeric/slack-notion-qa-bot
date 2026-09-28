@@ -150,18 +150,18 @@ function handleReportTaskModal() {
       },
       {
         type: 'input',
-        block_id: 'sheet_name_block',
+        block_id: 'env_block',
         element: {
           type: 'plain_text_input',
-          action_id: 'sheet_name_input',
+          action_id: 'env_input',
           placeholder: {
             type: 'plain_text',
-            text: 'e.g., Sheet1, Coverage, Test Report',
+            text: 'e.g., Pre-Staging',
           },
         },
         label: {
           type: 'plain_text',
-          text: 'Sheet Name',
+          text: 'Environment / Sheet Name',
           emoji: true,
         },
       },
@@ -170,7 +170,7 @@ function handleReportTaskModal() {
         elements: [
           {
             type: 'mrkdwn',
-            text: 'Paste a Notion page link and enter the Google Sheet tab name to fetch test coverage data.',
+            text: 'Paste a Notion page link and enter the Environment/Sheet name to fetch test coverage data.',
           },
         ],
       },

@@ -723,9 +723,9 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
   const values = body.view.state.values;
   
   const notionLink = values.notion_link_block?.notion_link_input?.value || '';
-  const sheetName = values.sheet_name_block?.sheet_name_input?.value || '';
+  const env = values.env_block?.env_input?.value || '';
 
-  if (!notionLink || !sheetName) {
+  if (!notionLink || !env) {
     await ack({
       response_action: 'update',
       view: {
@@ -736,7 +736,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `❌ *Please fill in all fields*\n\n> Notion Link and Sheet Name are required.`,
+              text: `❌ *Please fill in all fields*\n\n> Notion Link and Environment are required.`,
             },
           },
         ],
@@ -817,8 +817,8 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
       return;
     }
 
-    // Fetch coverage data from Google Sheets
-    const coverageData = await fetchTestCoverageData(spreadsheetId, sheetName);
+    // Fetch coverage data from Google Sheets - use env as sheet name
+    const coverageData = await fetchTestCoverageData(spreadsheetId, env);
 
     // Get thread link from Notion page
     const threadLink = await getThreadLinkFromPage(pageId);
@@ -830,7 +830,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
       notionPageId: pageId,
       notionLink: notionLink,
       threadLink: threadLink || '',
-      sheetName: sheetName,
+      env: env,
       testCaseUrl: pageInfo.testCaseUrl,
       coverageData: coverageData,
     });
@@ -847,7 +847,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `📋 *Task:* ${pageInfo.name || 'N/A'}\n📊 *Sheet:* ${sheetName}`,
+              text: `📋 *Task:* ${pageInfo.name || 'N/A'}`,
             },
           },
           {
@@ -875,16 +875,6 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             },
             label: { type: 'plain_text', text: 'Test Case Link', emoji: true },
             optional: true,
-          },
-          {
-            type: 'input',
-            block_id: 'env_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'env_input',
-              placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
-            },
-            label: { type: 'plain_text', text: 'Environment', emoji: true },
           },
           {
             type: 'input',
@@ -971,7 +961,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `❌ *Could not fetch data*\n\nError: ${error.message}\n\nMake sure:\n1. The Google Sheet is shared with the service account\n2. The sheet name "${sheetName}" exists in the spreadsheet`,
+              text: `❌ *Could not fetch data*\n\nError: ${error.message}\n\nMake sure:\n1. The Google Sheet is shared with the service account\n2. The sheet name "${env}" exists in the spreadsheet`,
             },
           },
         ],
@@ -989,7 +979,6 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
   
   const testcases = values.testcases_block?.testcases_input?.value || '0';
   const testcaseLink = values.testcase_link_block?.testcase_link_input?.value || '';
-  const env = values.env_block?.env_input?.value || '';
   const passed = values.passed_block?.passed_input?.value || '0';
   const failed = values.failed_block?.failed_input?.value || '0';
   const untested = values.untested_block?.untested_input?.value || '0';
@@ -1003,24 +992,30 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
   const notionPageId = context?.notionPageId;
   const notionLink = context?.notionLink;
   const threadLink = context?.threadLink;
-  const sheetName = context?.sheetName || '';
+  const env = context?.env || '';
+  const testCaseUrl = context?.testCaseUrl || '';
+
+  // Format coverage to 2 decimal places
+  const coverageFormatted = parseFloat(coverage).toFixed(2);
 
   try {
     // Add report as comment in Notion
     const { Client } = require('@notionhq/client');
     const notion = new Client({ auth: process.env.NOTION_API_KEY });
     
-    const testcaseFormatted = testcaseLink ? `<${testcaseLink}|Testcases: ${testcases}>` : `Testcases: ${testcases}`;
+    const testcaseLine = testcaseLink 
+      ? `<${testcaseLink}|Testcases: ${testcases}>` 
+      : `Testcases: ${testcases}`;
     
     const reportContent = `[Testing Report BO] Bank Validity Status Feedback
 Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
 Env: ${env}
 
 Testcases: ${testcases} (${testcaseLink ? `<${testcaseLink}|link>` : 'link'})
- Passed Test: ${coverage}%
-Failed Test: ${failed}%
-Untested Test: ${untested}%
-Total Coverage Test: ${coverage}%
+ Passed Test: ${coverageFormatted}%
+Failed Test: ${failed} cases
+Untested Test: ${untested} cases
+Total Coverage Test: ${coverageFormatted}%
 
 Notes:
 ${notes || ' '}
@@ -1051,24 +1046,21 @@ cc: ${cc || ' '}`;
       }
     }
 
-    // Build report message
-    const testcaseLine = testcaseLink 
+    // Build report message - blockquote format with Date and Env
+    const testcaseLineFormatted = testcaseLink 
       ? `Testcases: ${testcases} (<${testcaseLink}|link>)` 
-      : `Testcases: ${testcases} (link)`;
+      : `Testcases: ${testcases}`;
     
     let reportText = `*[Testing Report BO] Bank Validity Status Feedback*\n`;
-    reportText += `\`\`\`\n`;
-    reportText += `Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n`;
-    reportText += `Env: ${env}\n\n`;
-    reportText += `${testcaseLine}\n`;
-    reportText += ` Passed Test: ${coverage}%\n`;
-    reportText += `Failed Test: ${failed}%\n`;
-    reportText += `Untested Test: ${untested}%\n`;
-    reportText += `Total Coverage Test: ${coverage}%\n\n`;
+    reportText += `> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n`;
+    reportText += `> Env: ${env}\n\n`;
+    reportText += `${testcaseLineFormatted}\n`;
+    reportText += ` Passed Test: ${coverageFormatted}%\n`;
+    reportText += `Failed Test: ${failed} cases\n`;
+    reportText += `Untested Test: ${untested} cases\n`;
+    reportText += `Total Coverage Test: ${coverageFormatted}%\n\n`;
     reportText += `Notes:\n${notes || ' '}\n\n`;
-    reportText += `cc: ${cc || ' '}\n`;
-    reportText += `\`\`\`\n`;
-    reportText += `🔗 <${notionLink}|Open in Notion>`;
+    reportText += `cc: ${cc || ' '}`;
 
     // Reply to thread if we have channel and thread_ts
     if (replyChannelId && replyThreadTs) {
