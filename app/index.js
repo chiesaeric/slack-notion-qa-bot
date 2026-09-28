@@ -157,7 +157,7 @@ app.command('/qa-bot-update-task', async ({ command, ack, client }) => {
 
 // ============================================
 // VIEW SUBMISSION - Update Task Modal 1: Parse Notion link
-// Pushes Modal 2 with status/progress/testcase + action buttons to branch
+// Pushes Modal 2 immediately (fetch data in Modal 2 handler)
 // ============================================
 app.view('update_task_modal', async ({ ack, body, client }) => {
   console.log('=== Modal 1 Handler Started ===');
@@ -211,132 +211,82 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
     return;
   }
 
-  // Ack immediately to prevent Slack timeout
-  await ack({ response_action: 'update', view: {
-    type: 'modal',
-    title: { type: 'plain_text', text: 'Loading...', emoji: true },
-    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: 'Fetching page info...' } }],
-    close: { type: 'plain_text', text: 'Cancel', emoji: true },
-  }});
-
-  console.log('Fetching page info from Notion...');
-
-  // Fetch page info (with short timeout)
-  let pageInfo;
-  let notionThreadLink = '';
-  try {
-    pageInfo = await Promise.race([
-      getPageInfo(pageId),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Notion API timeout')), 2500)),
-    ]);
-    notionThreadLink = pageInfo.slackThread || '';
-    console.log('Page info received:', pageInfo.name);
-  } catch (error) {
-    console.error('Error fetching Notion page:', error.message);
-    pageInfo = { name: 'N/A', status: '', progress: 0, testCaseUrl: '', slackThread: '' };
-  }
-
-  // Try to get thread link separately
-  let threadLink = '';
-  try {
-    threadLink = await Promise.race([
-      getThreadLinkFromPage(pageId),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Thread link timeout')), 2000)),
-    ]);
-  } catch (error) {
-    console.log('Thread link fetch failed:', error.message);
-  }
-
-  console.log('Pushing Modal 2...');
-  console.log('pageInfo.status:', pageInfo.status);
-  console.log('pageInfo.progress:', pageInfo.progress);
-  console.log('pageInfo.name:', pageInfo.name);
-
-  // Store context
+  // Store context immediately
   modalContext.set(body.user.id, {
     channelId: body.container?.channel_id || '',
     threadTs: body.container?.thread_ts || body.container?.message_ts || '',
     notionPageId: pageId,
     notionLink: notionLink,
-    threadLink: threadLink || notionThreadLink || '',
-    notionThreadLink: notionThreadLink,
-    testCaseUrl: pageInfo.testCaseUrl || '',
-    hasTestCase: !!pageInfo.testCaseUrl,
-    status: pageInfo.status || '',
-    progress: pageInfo.progress || 0,
-    taskName: pageInfo.name || 'N/A',
+    threadLink: '',
+    notionThreadLink: '',
+    testCaseUrl: '',
+    hasTestCase: false,
+    status: '',
+    progress: 0,
+    taskName: 'Loading...',
   });
 
-  // Push Modal 2 using client
-  try {
-    await client.views.push({
-      trigger_id: body.trigger_id,
-      view: {
-        type: 'modal',
-        callback_id: 'update_task_modal_step2',
-        title: { type: 'plain_text', text: 'Update Task', emoji: true },
-        blocks: [
-          {
-            type: 'input',
-            block_id: 'notion_link_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'notion_link_input',
-              initial_value: notionLink,
-            },
-            label: { type: 'plain_text', text: 'Notion Link', emoji: true },
+  // Push Modal 2 immediately - data will be fetched in Modal 2 handler
+  await ack({
+    response_action: 'push',
+    view: {
+      type: 'modal',
+      callback_id: 'update_task_modal_step2',
+      title: { type: 'plain_text', text: 'Update Task', emoji: true },
+      blocks: [
+        {
+          type: 'input',
+          block_id: 'notion_link_block',
+          element: {
+            type: 'plain_text_input',
+            action_id: 'notion_link_input',
+            initial_value: notionLink,
           },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%`,
-            },
+          label: { type: 'plain_text', text: 'Notion Link', emoji: true },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `📋 *Task Info:*\n> *Name:* Loading...\n> *Current Status:* -\n> *Current Progress:* -`,
           },
-          { type: 'divider' },
-          {
-            type: 'input',
-            block_id: 'status_block',
-            element: {
-              type: 'static_select',
-              action_id: 'status_input',
-              placeholder: { type: 'plain_text', text: 'Select status' },
-              initial_option: pageInfo.status ? {
-                text: { type: 'plain_text', text: getStatusEmoji(pageInfo.status) + ' ' + pageInfo.status },
-                value: pageInfo.status,
-              } : undefined,
-              options: [
-                { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
-                { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
-                { text: { type: 'plain_text', text: '🧪 In Prestaging', emoji: true }, value: 'In Prestaging' },
-                { text: { type: 'plain_text', text: '🧪 In Staging', emoji: true }, value: 'In Staging' },
-                { text: { type: 'plain_text', text: '✅ Ready to Release', emoji: true }, value: 'Ready to Release' },
-                { text: { type: 'plain_text', text: '🚀 Released', emoji: true }, value: 'Released' },
-              ],
-            },
-            label: { type: 'plain_text', text: 'Status *', emoji: true },
+        },
+        { type: 'divider' },
+        {
+          type: 'input',
+          block_id: 'status_block',
+          element: {
+            type: 'static_select',
+            action_id: 'status_input',
+            placeholder: { type: 'plain_text', text: 'Select status' },
+            options: [
+              { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
+              { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
+              { text: { type: 'plain_text', text: '🧪 In Prestaging', emoji: true }, value: 'In Prestaging' },
+              { text: { type: 'plain_text', text: '🧪 In Staging', emoji: true }, value: 'In Staging' },
+              { text: { type: 'plain_text', text: '✅ Ready to Release', emoji: true }, value: 'Ready to Release' },
+              { text: { type: 'plain_text', text: '🚀 Released', emoji: true }, value: 'Released' },
+            ],
           },
-          {
-            type: 'input',
-            block_id: 'sheet_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'sheet_input',
-              placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
-            },
-            label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
-            optional: true,
+          label: { type: 'plain_text', text: 'Status *', emoji: true },
+        },
+        {
+          type: 'input',
+          block_id: 'sheet_block',
+          element: {
+            type: 'plain_text_input',
+            action_id: 'sheet_input',
+            placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
           },
-          { type: 'divider' },
-        ],
-        submit: { type: 'plain_text', text: 'Next', emoji: true },
-        close: { type: 'plain_text', text: 'Cancel', emoji: true },
-      },
-    });
-    console.log('Modal 2 pushed successfully');
-  } catch (error) {
-    console.error('Error pushing Modal 2:', error.message);
-  }
+          label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
+          optional: true,
+        },
+        { type: 'divider' },
+      ],
+      submit: { type: 'plain_text', text: 'Next', emoji: true },
+      close: { type: 'plain_text', text: 'Cancel', emoji: true },
+    },
+  });
 });
 
 // ============================================
@@ -346,7 +296,6 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
 app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   console.log('=== Modal 2 Handler Started ===');
   console.log('user_id:', body.user.id);
-  console.log('trigger_id:', body.trigger_id);
 
   const values = body.view.state.values;
 
@@ -357,24 +306,47 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   console.log('sheetName:', sheetName);
 
   const context = modalContext.get(body.user.id);
-  const notionPageId = context?.notionPageId;
-  const notionLink = context?.notionLink;
-  const threadLink = context?.threadLink;
-  const channelId = context?.channelId;
-  const threadTs = context?.threadTs;
-  const taskName = context?.taskName || 'N/A';
-  const testCaseUrl = context?.testCaseUrl || '';
+  let notionPageId = context?.notionPageId;
+  const notionLink = context?.notionLink || values.notion_link_block?.notion_link_input?.value || '';
+  const channelId = context?.channelId || '';
+  const threadTs = context?.threadTs || '';
+  const existingTaskName = context?.taskName || 'N/A';
   const existingProgress = context?.progress || 0;
+  const notionThreadLink = context?.notionThreadLink || '';
+  let testCaseUrl = context?.testCaseUrl || '';
+
+  // Fetch Notion page info if we don't have testCaseUrl yet
+  if (!testCaseUrl && notionPageId) {
+    console.log('Fetching Notion page info...');
+    try {
+      const pageInfo = await Promise.race([
+        getPageInfo(notionPageId),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Notion timeout')), 2500)),
+      ]);
+      if (pageInfo) {
+        testCaseUrl = pageInfo.testCaseUrl || testCaseUrl;
+        console.log('Page info fetched:', pageInfo.name, 'testCaseUrl:', testCaseUrl);
+      }
+    } catch (error) {
+      console.log('Notion fetch error:', error.message);
+    }
+  }
+
+  // Update context with latest data
+  modalContext.set(body.user.id, {
+    ...context,
+    notionPageId,
+    notionLink,
+    testCaseUrl,
+    taskName: existingTaskName,
+    progress: existingProgress,
+    updateStatus: status,
+    sheetName,
+  });
 
   console.log('context found:', !!context);
   console.log('notionPageId:', notionPageId);
-
-  // Store updated values
-  modalContext.set(body.user.id, {
-    ...context,
-    updateStatus: status,
-    sheetName: sheetName,
-  });
+  console.log('testCaseUrl:', testCaseUrl);
 
   // ============================================
   // Branch: Ready to Release or Released
@@ -625,8 +597,6 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   // Branch: Others (Not Started, Ready to Release, Released, etc.)
   // Direct update + reply
   // ============================================
-  // Get thread info from Notion Slack Thread property
-  const notionThreadLink = context?.notionThreadLink || '';
   // Status emoji mapping
   const statusEmoji = {
     'Not Started': '⭕',
