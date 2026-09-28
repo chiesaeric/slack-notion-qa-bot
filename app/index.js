@@ -1008,9 +1008,7 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
     const { Client } = require('@notionhq/client');
     const notion = new Client({ auth: process.env.NOTION_API_KEY });
     
-    const testcaseLine = testcaseLink 
-      ? `<${testcaseLink}|${testcasesFormatted}> (link)` 
-      : `${testcasesFormatted}`;
+    const testcaseLine = `${testcasesFormatted}`;
     
     const reportTitle = `[Testing Report] ${taskName}`;
     
@@ -1051,9 +1049,9 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
     let reportText = `*[Testing Report] ${taskName}*\n`;
     reportText += `> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n`;
     reportText += `> Env: ${env}\n\n`;
-    reportText += `*Total Coverage Test:* $${coverageFormatted}%\n\n`;
+    reportText += `*Total Coverage Test:* ${coverageFormatted}%\n\n`;
     reportText += `Test Cases: ${testcaseLineFormatted}\n`;
-    reportText += `Passed Test: $${coverageFormatted}%\n`;
+    reportText += `Passed Test: ${coverageFormatted}%\n`;
     reportText += `Failed Test: ${failed} cases\n`;
     reportText += `Untested Test: ${untested} cases\n\n`;
     reportText += `*Notes:*\n${notes || '-'}`;
