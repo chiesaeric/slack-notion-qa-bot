@@ -554,6 +554,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
           type: 'plain_text_input',
           action_id: 'testcase_input',
           placeholder: { type: 'plain_text', text: 'Paste test case spreadsheet link here...' },
+          initial_value: pageInfo.testCaseUrl || '',
         },
         label: { type: 'plain_text', text: 'Test Cases *', emoji: true },
         optional: true,
