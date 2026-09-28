@@ -1009,28 +1009,22 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
     const notion = new Client({ auth: process.env.NOTION_API_KEY });
     
     const testcaseLine = testcaseLink 
-      ? `<${testcaseLink}|${testcasesFormatted}>` 
+      ? `<${testcaseLink}|${testcasesFormatted}> (link)` 
       : `${testcasesFormatted}`;
     
     // Format CC for Notion (plain text of user IDs/names)
     const ccFormatted = ccUsers.length > 0 ? ccUsers.join(', ') : '';
     
-    const reportTitle = `[Testing Report] ${taskName}`;
+    const reportTitle = `[Testing Report] Name: ${taskName}`;
     
     const reportContent = `${reportTitle}
-Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-Env: ${env}
-
-*Total Coverage Test:* ${coverageFormatted}%
-
+Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} Env: ${env}
+Total Coverage Test: ${coverageFormatted}%
 Testcases: ${testcaseLine}
- Passed Test: ${coverageFormatted}%
+Passed Test: ${coverageFormatted}%
 Failed Test: ${failed} cases
 Untested Test: ${untested} cases
-
-*Notes:*
-${notes || ' '}
-
+Notes: ${notes || '-'}
 cc: ${ccFormatted}`;
 
     await notion.comments.create({
@@ -1057,23 +1051,22 @@ cc: ${ccFormatted}`;
       }
     }
 
-    // Format CC mentions for Slack (multi_conversations_select returns user IDs)
-    const ccLine = ccUsers.length > 0 ? ccUsers.map(userId => `<@${userId}>`).join(' ') : '';
-
     // Build report message
     const testcaseLineFormatted = testcaseLink 
       ? `${testcasesFormatted} (<${testcaseLink}|link>)` 
       : `${testcasesFormatted}`;
     
-    let reportText = `*[Testing Report] ${taskName}*\n`;
-    reportText += `> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n`;
-    reportText += `> Env: ${env}\n\n`;
-    reportText += `*Total Coverage Test:* ${coverageFormatted}%\n\n`;
+    // Format CC mentions for Slack
+    const ccLine = ccUsers.length > 0 ? ccUsers.map(userId => `<@${userId}>`).join(' ') : '';
+    
+    let reportText = `*[Testing Report] Name: ${taskName}*\n`;
+    reportText += `> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} Env: ${env}\n`;
+    reportText += `> Total Coverage Test: ${coverageFormatted}%\n\n`;
     reportText += `Testcases: ${testcaseLineFormatted}\n`;
-    reportText += ` Passed Test: ${coverageFormatted}%\n`;
+    reportText += `Passed Test: ${coverageFormatted}%\n`;
     reportText += `Failed Test: ${failed} cases\n`;
     reportText += `Untested Test: ${untested} cases\n\n`;
-    reportText += `*Notes:*\n${notes || ' '}\n\n`;
+    reportText += `Notes: ${notes || '-'}\n`;
     if (ccLine) {
       reportText += `cc: ${ccLine}`;
     }
