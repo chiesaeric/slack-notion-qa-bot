@@ -462,9 +462,14 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
       return;
     }
 
+    console.log('=== Modal 2: In Staging/In Prestaging branch ===');
+    console.log('sheetName:', sheetName);
+    console.log('testCaseUrl:', testCaseUrl);
+
     // Fetch coverage data
     const spreadsheetId = parseSpreadsheetUrl(testCaseUrl);
     if (!spreadsheetId) {
+      console.log('Invalid spreadsheet URL');
       await ack({
         response_action: 'update',
         view: {
@@ -480,13 +485,17 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
       return;
     }
 
+    console.log('Fetching coverage data from spreadsheet:', spreadsheetId, 'sheet:', sheetName);
+
     let coverageData;
     try {
       coverageData = await Promise.race([
         fetchTestCoverageData(spreadsheetId, sheetName),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 8000)),
       ]);
+      console.log('Coverage data received:', coverageData);
     } catch (apiError) {
+      console.log('Coverage fetch error:', apiError.message);
       await ack({
         response_action: 'update',
         view: {
@@ -509,6 +518,8 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
       sheetName: sheetName,
       coverageData: coverageData,
     });
+
+    console.log('Pushing Modal 3...');
 
     // Push Modal 3 with coverage preview + Notes + CC
     const coverageFormatted = parseFloat(coverageData.coverage || 0).toFixed(2);
