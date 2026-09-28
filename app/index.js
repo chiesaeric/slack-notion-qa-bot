@@ -12,14 +12,9 @@ const app = new App({
 
 // User token for reading thread messages
 const userToken = process.env.SLACK_USER_TOKEN;
-console.log('=== TOKEN CHECK ===');
-console.log('userToken exists:', !!userToken);
-console.log('userToken starts with xup:', userToken?.startsWith('xup'));
-console.log('userToken prefix:', userToken?.substring(0, 10));
-console.log('====================');
 
 // Store context per user for thread reply
-// Key: user_id, Value: { channelId, threadTs }
+// Key: user_id, Value: { channelId, threadTs, threadLink }
 const modalContext = new Map();
 
 // ============================================
@@ -75,7 +70,6 @@ function extractDataFromThread(messages) {
   
   // Description: use full text or first part
   if (userMessages.length > 0) {
-    // Get first user's message that is not empty
     const firstMsg = userMessages[0].text || '';
     description = firstMsg;
   }
@@ -87,10 +81,6 @@ function extractDataFromThread(messages) {
 // HELPER: Parse Slack thread URL to get channel & thread ts
 // ============================================
 function parseThreadLink(threadLink) {
-  // Formats:
-  // https://xxx.slack.com/archives/CHANNEL_ID/pTIMESTAMP
-  // https://xxx.slack.com/archives/CHANNEL_ID/pTIMESTAMP?thread_ts=...
-  
   const patterns = [
     /archives\/([A-Z0-9]+)\/p([A-Z0-9]+)/i,
     /channels\/([A-Z0-9]+)\/([0-9]+\.[0-9]+)/i,
@@ -117,7 +107,8 @@ app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
   // Store context for this user
   modalContext.set(command.user_id, {
     channelId: command.channel_id,
-    threadTs: '',  // Will be set when thread link is parsed
+    threadTs: '',
+    threadLink: '',
   });
 
   try {
@@ -142,6 +133,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   modalContext.set(body.user.id, {
     channelId: body.container?.channel_id || '',
     threadTs: body.container?.thread_ts || body.container?.message_ts || '',
+    threadLink: threadLink,
   });
 
   // If no thread link, just show form
@@ -266,13 +258,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   }
 
   try {
-    // Debug: check token being used
-    console.log('=== FETCHING THREAD ===');
-    console.log('Using userToken:', userToken ? `${userToken.substring(0, 10)}...` : 'MISSING');
-    console.log('parsed.channelId:', parsed.channelId);
-    console.log('parsed.threadTs:', parsed.threadTs);
-    
-    // Use bot token for fetching thread (it has channels:history if bot is in channel)
+    // Use bot token for fetching thread
     const threadReplies = await client.conversations.replies(
       { channel: parsed.channelId, ts: parsed.threadTs, limit: 50 }
     );
@@ -280,15 +266,12 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
     const messages = threadReplies.messages || [];
     const { projectName, dueDate, description } = extractDataFromThread(messages);
 
-    // Store parsed thread context for final submission
+    // Store parsed thread context
     modalContext.set(body.user.id, {
       channelId: parsed.channelId,
       threadTs: parsed.threadTs,
+      threadLink: threadLink,
     });
-
-    console.log('=== THREAD PARSED DEBUG ===');
-    console.log('stored context:', modalContext.get(body.user.id));
-    console.log('============================');
 
     // Push new view with auto-filled data
     await ack({
@@ -421,18 +404,12 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
   const dueDate = values.due_date_block?.due_date_input?.selected_date || null;
   const assignee = values.assignee_block?.assignee_input?.value || '';
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
+  const threadLink = values.thread_link_block?.thread_link_input?.value || '';
 
-  // Retrieve stored context using user.id
+  // Retrieve stored context
   const context = modalContext.get(body.user.id);
   const channelId = context?.channelId;
   const threadTs = context?.threadTs;
-
-  console.log('=== FINAL SUBMIT DEBUG ===');
-  console.log('body.user.id:', body.user.id);
-  console.log('stored context:', context);
-  console.log('channelId:', channelId);
-  console.log('threadTs:', threadTs);
-  console.log('=========================');
 
   const priorityEmoji = priority === 'High' ? '🔴' : priority === 'Medium' ? '🟡' : '🟢';
 
@@ -444,11 +421,12 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
       dueDate,
       assignee,
       labels,
+      threadLink: threadLink || context?.threadLink || '',
     });
 
-    // Success modal
+    // Success modal - use 'clear' to close all modals
     await ack({
-      response_action: 'update',
+      response_action: 'clear',
       view: {
         type: 'modal',
         title: { type: 'plain_text', text: '✅ Task Created', emoji: true },
@@ -473,7 +451,7 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
     });
 
     // Reply to thread with Notion link
-    if (channelId) {
+    if (channelId && threadTs) {
       await client.chat.postMessage({
         channel: channelId,
         thread_ts: threadTs,

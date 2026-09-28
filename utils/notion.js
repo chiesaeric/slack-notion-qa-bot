@@ -17,12 +17,10 @@ const DATABASE_ID = process.env.NOTION_DATABASE_ID;
  * @returns {Promise<Object>} Created page result with URL
  */
 async function createNotionTask(taskData) {
-  const { taskName, description, priority, dueDate, assignee, labels } = taskData;
+  const { taskName, description, priority, dueDate, assignee, labels, threadLink } = taskData;
 
   // Build Notion page properties based on your database schema
-  // Adjust property names to match your actual Notion database schema
   const properties = {
-    // Title property - change 'Name' to your actual title property name
     Name: {
       title: [
         {
@@ -34,9 +32,7 @@ async function createNotionTask(taskData) {
     },
   };
 
-  // Add description if provided
   if (description) {
-    // Change 'Description' to your actual property name (rich_text)
     properties.Description = {
       rich_text: [
         {
@@ -48,17 +44,13 @@ async function createNotionTask(taskData) {
     };
   }
 
-  // Add priority select
-  // Change 'Priority' to your actual property name
   properties.Priority = {
     select: {
       name: priority || 'Medium',
     },
   };
 
-  // Add due date if provided
   if (dueDate) {
-    // Change 'Due Date' to your actual property name
     properties['Due Date'] = {
       date: {
         start: dueDate,
@@ -66,7 +58,6 @@ async function createNotionTask(taskData) {
     };
   }
 
-  // Add assignee if provided - stored as text
   if (assignee) {
     properties.Assignee = {
       rich_text: [
@@ -79,9 +70,7 @@ async function createNotionTask(taskData) {
     };
   }
 
-  // Add labels if provided (multi-select)
   if (labels && labels.length > 0) {
-    // Change 'Labels' to your actual property name
     properties.Labels = {
       multi_select: labels.map(channelId => ({ name: channelId })),
     };
@@ -95,6 +84,26 @@ async function createNotionTask(taskData) {
     properties: properties,
   });
 
+  // Add thread link as a comment if provided
+  if (threadLink) {
+    try {
+      await notion.comments.create({
+        parent: { page_id: response.id },
+        rich_text: [
+          {
+            type: 'text',
+            text: {
+              content: `Link Request: ${threadLink}`,
+            },
+          },
+        ],
+      });
+    } catch (commentError) {
+      console.error('Error creating comment:', commentError);
+      // Don't fail the whole operation if comment fails
+    }
+  }
+
   return {
     id: response.id,
     url: response.url,
@@ -102,32 +111,6 @@ async function createNotionTask(taskData) {
   };
 }
 
-/**
- * Get database schema (properties)
- * Useful for debugging or dynamically matching schema
- */
-async function getDatabaseSchema() {
-  const database = await notion.databases.retrieve({
-    database_id: DATABASE_ID,
-  });
-
-  return database.properties;
-}
-
-/**
- * List all tasks in the database (for debugging)
- */
-async function listTasks(pageSize = 10) {
-  const response = await notion.databases.query({
-    database_id: DATABASE_ID,
-    page_size: pageSize,
-  });
-
-  return response.results;
-}
-
 module.exports = {
   createNotionTask,
-  getDatabaseSchema,
-  listTasks,
 };
