@@ -526,8 +526,8 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
           action_id: 'status_input',
           placeholder: { type: 'plain_text', text: 'Select status' },
           options: [
-            { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
             { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
+            { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
             { text: { type: 'plain_text', text: '🔄 In Staging', emoji: true }, value: 'In Staging' },
             { text: { type: 'plain_text', text: '🔄 In Pre-staging', emoji: true }, value: 'In Pre-staging' },
             { text: { type: 'plain_text', text: '✅ Ready to Release', emoji: true }, value: 'Ready to Release' },
@@ -547,8 +547,17 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
         label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
         optional: true,
       },
-      // Test Case field - added dynamically when status is "Created Test Plan"
-      // This is a placeholder that will be shown via view update
+      {
+        type: 'input',
+        block_id: 'testcase_block',
+        element: {
+          type: 'plain_text_input',
+          action_id: 'testcase_input',
+          placeholder: { type: 'plain_text', text: 'Paste test case spreadsheet link here...' },
+        },
+        label: { type: 'plain_text', text: 'Test Cases *', emoji: true },
+        optional: true,
+      },
     ];
 
     modalContext.set(body.user.id, {
