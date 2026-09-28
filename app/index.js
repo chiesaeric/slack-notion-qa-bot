@@ -667,8 +667,6 @@ app.view('update_task_modal_final', async ({ ack, body, client }) => {
   const threadLink = context?.threadLink;
   const notionLink = context?.notionLink;
 
-  const statusEmoji = status === 'Done' ? '✅' : status === 'In Progress' ? '🔄' : '⭕';
-
   try {
     await updateNotionTaskStatus(notionPageId, status, progress ? parseInt(progress, 10) : null);
 
@@ -692,7 +690,7 @@ app.view('update_task_modal_final', async ({ ack, body, client }) => {
       await client.chat.postMessage({
         channel: replyChannelId,
         thread_ts: replyThreadTs,
-        text: `🔄 *Task Updated!*\n\n> *Status:* ${statusEmoji} ${status}\n> *Progress:* ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
+        text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> Progress: ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
       });
     }
 
