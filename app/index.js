@@ -244,6 +244,12 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
 
     console.log('Building Modal 2 view...');
 
+    // Check if task has test case
+    const hasTestCase = !!pageInfo.testCaseUrl;
+    const testCaseInfo = hasTestCase
+      ? `> *Test Case:* ✓ Ada (<${pageInfo.testCaseUrl}|link>)\n> *Sheet Name:* Wajib diisi untuk auto-fetch`
+      : `> *Test Case:* ✗ Tidak ada\n> *Sheet Name:* Opsional (untuk input manual)`;
+
     // Modal 2 view with task info
     await ack({
       response_action: 'push',
@@ -266,7 +272,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%`,
+              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%\n${testCaseInfo}`,
             },
           },
           { type: 'divider' },
@@ -298,7 +304,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             element: {
               type: 'plain_text_input',
               action_id: 'sheet_input',
-              placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
+              placeholder: hasTestCase ? 'Wajib: Pre-Staging / Staging' : 'Opsional: untuk input manual',
             },
             label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
             optional: true,
@@ -429,16 +435,20 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
 
   // ============================================
   // Branch: In Staging or In Prestaging
-  // Fetch coverage → Modal 3 (Coverage preview + Notes + CC)
+  // Has test case → fetch coverage from Google Sheets
+  // No test case → skip fetch, go to Modal 3 for manual input
   // ============================================
   if (status === 'In Staging' || status === 'In Prestaging') {
     console.log('=== In Staging/Prestaging branch ===');
     console.log('sheetName:', sheetName);
     console.log('testCaseUrl:', testCaseUrl);
 
-    // Validate sheet name required
-    if (!sheetName) {
-      console.log('Sheet name is required');
+    // Check if task has test case
+    const hasTestCase = !!testCaseUrl;
+
+    // If has test case, sheet name is required
+    if (hasTestCase && !sheetName) {
+      console.log('Sheet name is required when test case exists');
       await ack({
         response_action: 'update',
         view: {
@@ -446,7 +456,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
           title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
           blocks: [{
             type: 'section',
-            text: { type: 'mrkdwn', text: '❌ *Sheet Name is required for In Staging or In Prestaging*' },
+            text: { type: 'mrkdwn', text: '❌ *Sheet Name wajib diisi karena task ini punya Test Case*' },
           }],
           close: { type: 'plain_text', text: 'Close', emoji: true },
         },
@@ -454,69 +464,59 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
       return;
     }
 
-    // Validate test case URL exists
-    if (!testCaseUrl) {
-      console.log('Test Case URL is required');
-      await ack({
-        response_action: 'update',
-        view: {
-          type: 'modal',
-          title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
-          blocks: [{
-            type: 'section',
-            text: { type: 'mrkdwn', text: '❌ *Test Case URL is required*\n\nPlease update the Test Case URL in Notion first.' },
-          }],
-          close: { type: 'plain_text', text: 'Close', emoji: true },
-        },
-      });
-      return;
-    }
+    let coverageData = {
+      coverage: 0,
+      scopeTest: 0,
+      totalPassed: 0,
+      totalFailed: 0,
+      totalNotTested: 0,
+    };
 
-    console.log('Fetching coverage data...');
+    // Fetch coverage only if has test case and sheet name
+    if (hasTestCase && sheetName) {
+      console.log('Fetching coverage data...');
+      const spreadsheetId = parseSpreadsheetUrl(testCaseUrl);
+      if (!spreadsheetId) {
+        console.log('Invalid spreadsheet URL');
+        await ack({
+          response_action: 'update',
+          view: {
+            type: 'modal',
+            title: { type: 'plain_text', text: '❌ Invalid URL', emoji: true },
+            blocks: [{
+              type: 'section',
+              text: { type: 'mrkdwn', text: '❌ *Invalid Test Case URL in Notion*' },
+            }],
+            close: { type: 'plain_text', text: 'Close', emoji: true },
+          },
+        });
+        return;
+      }
 
-    // Fetch coverage data
-    const spreadsheetId = parseSpreadsheetUrl(testCaseUrl);
-    if (!spreadsheetId) {
-      console.log('Invalid spreadsheet URL');
-      await ack({
-        response_action: 'update',
-        view: {
-          type: 'modal',
-          title: { type: 'plain_text', text: '❌ Invalid URL', emoji: true },
-          blocks: [{
-            type: 'section',
-            text: { type: 'mrkdwn', text: '❌ *Invalid Test Case URL in Notion*' },
-          }],
-          close: { type: 'plain_text', text: 'Close', emoji: true },
-        },
-      });
-      return;
-    }
-
-    console.log('Fetching coverage data...');
-
-    let coverageData;
-    try {
-      coverageData = await Promise.race([
-        fetchTestCoverageData(spreadsheetId, sheetName),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 3000)),
-      ]);
-      console.log('Coverage data received:', coverageData);
-    } catch (apiError) {
-      console.log('Coverage fetch error:', apiError.message);
-      await ack({
-        response_action: 'update',
-        view: {
-          type: 'modal',
-          title: { type: 'plain_text', text: '❌ Connection Error', emoji: true },
-          blocks: [{
-            type: 'section',
-            text: { type: 'mrkdwn', text: `❌ *Could not fetch coverage data*\n\nError: ${apiError.message}` },
-          }],
-          close: { type: 'plain_text', text: 'Close', emoji: true },
-        },
-      });
-      return;
+      try {
+        coverageData = await Promise.race([
+          fetchTestCoverageData(spreadsheetId, sheetName),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 3000)),
+        ]);
+        console.log('Coverage data received:', coverageData);
+      } catch (apiError) {
+        console.log('Coverage fetch error:', apiError.message);
+        await ack({
+          response_action: 'update',
+          view: {
+            type: 'modal',
+            title: { type: 'plain_text', text: '❌ Connection Error', emoji: true },
+            blocks: [{
+              type: 'section',
+              text: { type: 'mrkdwn', text: `❌ *Could not fetch coverage data*\n\nError: ${apiError.message}` },
+            }],
+            close: { type: 'plain_text', text: 'Close', emoji: true },
+          },
+        });
+        return;
+      }
+    } else {
+      console.log('No test case or sheet name - will use manual input');
     }
 
     // Store in context for Modal 3
