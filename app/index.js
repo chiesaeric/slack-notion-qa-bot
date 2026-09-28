@@ -756,7 +756,7 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
           close: { type: 'plain_text', text: 'Cancel', emoji: true },
         },
       });
-      console.log('Modal 4 pushed successfully, ackResult:', ackResult);
+      console.log('Modal 4 pushed successfully, ackResult:', JSON.stringify(ackResult));
     } catch (ackErr) {
       console.error('Error pushing Modal 4:', ackErr.message);
     }
