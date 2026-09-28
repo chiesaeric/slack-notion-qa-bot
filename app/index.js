@@ -109,17 +109,10 @@ function parseThreadLink(threadLink) {
 app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
   await ack();
 
-  // Debug
-  console.log('=== SLASH COMMAND DEBUG ===');
-  console.log('command.channel_id:', command.channel_id);
-  console.log('command.message_ts:', command.message_ts);
-  console.log('command.text:', command.text);
-  console.log('============================');
-
   // Store context for this user
   modalContext.set(command.user_id, {
     channelId: command.channel_id,
-    threadTs: command.message_ts,
+    threadTs: '',  // Will be set when thread link is parsed
   });
 
   try {
@@ -277,6 +270,16 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
     const messages = threadReplies.messages || [];
     const { projectName, dueDate, description } = extractDataFromThread(messages);
 
+    // Store parsed thread context for final submission
+    modalContext.set(body.user.id, {
+      channelId: parsed.channelId,
+      threadTs: parsed.threadTs,
+    });
+
+    console.log('=== THREAD PARSED DEBUG ===');
+    console.log('stored context:', modalContext.get(body.user.id));
+    console.log('============================');
+
     // Push new view with auto-filled data
     await ack({
       response_action: 'push',
@@ -410,20 +413,16 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
 
   // Retrieve stored context using user.id
-  console.log('=== DEBUG ===');
-  console.log('body.user.id:', body.user.id);
-  console.log('modalContext keys:', [...modalContext.keys()]);
-  console.log('stored context:', modalContext.get(body.user.id));
-  console.log('body.container:', JSON.stringify({
-    channel_id: body.container?.channel_id,
-    thread_ts: body.container?.thread_ts,
-    message_ts: body.container?.message_ts
-  }));
-  console.log('=============');
-
   const context = modalContext.get(body.user.id);
   const channelId = context?.channelId;
   const threadTs = context?.threadTs;
+
+  console.log('=== FINAL SUBMIT DEBUG ===');
+  console.log('body.user.id:', body.user.id);
+  console.log('stored context:', context);
+  console.log('channelId:', channelId);
+  console.log('threadTs:', threadTs);
+  console.log('=========================');
 
   const priorityEmoji = priority === 'High' ? '🔴' : priority === 'Medium' ? '🟡' : '🟢';
 
