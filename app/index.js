@@ -109,6 +109,13 @@ function parseThreadLink(threadLink) {
 app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
   await ack();
 
+  // Debug
+  console.log('=== SLASH COMMAND DEBUG ===');
+  console.log('command.channel_id:', command.channel_id);
+  console.log('command.message_ts:', command.message_ts);
+  console.log('command.text:', command.text);
+  console.log('============================');
+
   // Store context for this user
   modalContext.set(command.user_id, {
     channelId: command.channel_id,
