@@ -229,16 +229,17 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
 
   console.log('Fetching page info from Notion...');
 
-  // Fetch page info and thread link
+  // Fetch page info and thread link with short timeout
   let pageInfo;
   let threadLink = '';
   try {
-    const results = await Promise.all([
-      getPageInfo(pageId),
-      getThreadLinkFromPage(pageId),
+    const results = await Promise.race([
+      Promise.all([getPageInfo(pageId), getThreadLinkFromPage(pageId)]),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Notion timeout')), 3000)),
     ]);
     pageInfo = results[0];
     threadLink = results[1] || '';
+    console.log('Notion fetch completed');
   } catch (error) {
     console.error('Error fetching Notion page:', error.message);
     pageInfo = { name: 'N/A', status: '', progress: 0, testCaseUrl: '', slackThread: '' };
