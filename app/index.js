@@ -661,14 +661,17 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     // Fetch coverage data with timeout
     let coverageData;
     try {
+      console.log('Calling fetchTestCoverageData...');
       coverageData = await Promise.race([
         fetchTestCoverageData(spreadsheetId, env),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Request timeout')), 8000)
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Request timeout')), 8000),
         ),
       ]);
+      console.log('fetchTestCoverageData result:', coverageData);
     } catch (apiError) {
       console.error('Google Sheets API error:', apiError.message);
+      console.error('Full error:', apiError);
       await ack({
         response_action: 'update',
         view: {
