@@ -576,19 +576,31 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   }
 
   // ============================================
-  // Branch: Others (Not Started, etc.)
+  // Branch: Others (Not Started, Ready to Release, Released, etc.)
   // Direct update + reply
   // ============================================
+  // Get thread info from Notion Slack Thread property
+  const notionThreadLink = context?.notionThreadLink || '';
+  let replyChannelId = channelId;
+  let replyThreadTs = threadTs;
+  if (notionThreadLink) {
+    const parsed = parseThreadLink(notionThreadLink);
+    if (parsed) {
+      replyChannelId = parsed.channelId;
+      replyThreadTs = parsed.threadTs;
+    }
+  }
+
   try {
     await updateNotionTaskStatus(notionPageId, status, null);
 
     await ack({ response_action: 'clear' });
 
-    if (channelId && threadTs) {
+    if (replyChannelId && replyThreadTs) {
       await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> 🔗 <${notionLink}|Open in Notion>`,
+        channel: replyChannelId,
+        thread_ts: replyThreadTs,
+        text: `:arrows_counterclockwise: *Task Updated!*\n\nStatus: ${status}\n:link: <${notionLink}|Open in Notion>`,
       });
     }
   } catch (error) {
@@ -631,6 +643,18 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     const progress = values.progress_block?.progress_input?.value || '';
     const testCaseUrl = values.testcase_block?.testcase_input?.value || '';
 
+    // Get thread info from Notion Slack Thread property
+    const notionThreadLink = context?.notionThreadLink || '';
+    let replyChannelId = channelId;
+    let replyThreadTs = threadTs;
+    if (notionThreadLink) {
+      const parsed = parseThreadLink(notionThreadLink);
+      if (parsed) {
+        replyChannelId = parsed.channelId;
+        replyThreadTs = parsed.threadTs;
+      }
+    }
+
     try {
       // Update Notion: status + progress
       await updateNotionTaskStatus(notionPageId, status, progress ? parseInt(progress, 10) : null);
@@ -647,11 +671,11 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
 
       await ack({ response_action: 'clear' });
 
-      if (channelId && threadTs) {
+      if (replyChannelId && replyThreadTs) {
         await client.chat.postMessage({
-          channel: channelId,
-          thread_ts: threadTs,
-          text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> Progress: ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
+          channel: replyChannelId,
+          thread_ts: replyThreadTs,
+          text: `:arrows_counterclockwise: *Task Updated!*\n\nStatus: ${status}\nProgress: ${progress || 0}%\n:link: <${notionLink}|Open in Notion>`,
         });
       }
     } catch (error) {
