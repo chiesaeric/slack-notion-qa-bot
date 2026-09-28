@@ -648,18 +648,24 @@ app.view('update_task_modal_final', async ({ ack, body, client }) => {
 
     await ack({ response_action: 'clear' });
 
-    // Reply to thread (get thread link from Notion comment)
-    if (channelId && threadTs && threadLink) {
+    // Determine where to post - prefer threadLink from Notion comment if available
+    let replyChannelId = channelId;
+    let replyThreadTs = threadTs;
+
+    // If we have threadLink from Notion comment, parse it for channel and ts
+    if (threadLink) {
+      const parsed = parseThreadLink(threadLink);
+      if (parsed) {
+        replyChannelId = parsed.channelId;
+        replyThreadTs = parsed.threadTs;
+      }
+    }
+
+    // Reply to thread if we have channel and thread_ts
+    if (replyChannelId && replyThreadTs) {
       await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: `🔄 *Task Updated!*\n\n> *Status:* ${statusEmoji} ${status}\n> *Progress:* ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
-      });
-    } else if (channelId && threadTs) {
-      // If no thread link found, still notify
-      await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
+        channel: replyChannelId,
+        thread_ts: replyThreadTs,
         text: `🔄 *Task Updated!*\n\n> *Status:* ${statusEmoji} ${status}\n> *Progress:* ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
       });
     }
