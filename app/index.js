@@ -529,9 +529,8 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
 
     console.log('Pushing Modal 3...');
 
-    // Push Modal 3 with coverage preview + Notes + CC
+    // Push Modal 3 with coverage input fields + Notes + CC
     const coverageFormatted = parseFloat(coverageData.coverage || 0).toFixed(2);
-    const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
 
     await ack({
       response_action: 'push',
@@ -546,8 +545,54 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
           },
           { type: 'divider' },
           {
-            type: 'section',
-            text: { type: 'mrkdwn', text: `*[Testing Report]*\n> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n> Env: ${sheetName}\n\n> *Total Coverage Test:* ${coverageFormatted}%\n\nTest Cases: ${testcasesFormatted}\nPassed Test: ${coverageData.totalPassed || 0} cases\nFailed Test: ${coverageData.totalFailed || 0} cases\nUntested Test: ${coverageData.totalNotTested || 0} cases` },
+            type: 'input',
+            block_id: 'coverage_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'coverage_input',
+              initial_value: coverageFormatted,
+            },
+            label: { type: 'plain_text', text: 'Total Coverage Test (%)' },
+          },
+          {
+            type: 'input',
+            block_id: 'testcases_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'testcases_input',
+              initial_value: String(coverageData.scopeTest || 0),
+            },
+            label: { type: 'plain_text', text: 'Test Cases' },
+          },
+          {
+            type: 'input',
+            block_id: 'passed_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'passed_input',
+              initial_value: String(coverageData.totalPassed || 0),
+            },
+            label: { type: 'plain_text', text: 'Passed Test' },
+          },
+          {
+            type: 'input',
+            block_id: 'failed_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'failed_input',
+              initial_value: String(coverageData.totalFailed || 0),
+            },
+            label: { type: 'plain_text', text: 'Failed Test' },
+          },
+          {
+            type: 'input',
+            block_id: 'untested_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'untested_input',
+              initial_value: String(coverageData.totalNotTested || 0),
+            },
+            label: { type: 'plain_text', text: 'Untested Test' },
           },
           { type: 'divider' },
           {
@@ -784,15 +829,28 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
   const notionThreadLink = context?.notionThreadLink || '';
   const notes = values.notes_block?.notes_input?.value || '';
   const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
-  const coverageData = context?.coverageData || {};
   const sheetName = context?.sheetName || '';
 
+  // Read coverage values from input fields
+  const coverageInput = values.coverage_block?.coverage_input?.value || '0';
+  const testcasesInput = values.testcases_block?.testcases_input?.value || '0';
+  const passedInput = values.passed_block?.passed_input?.value || '0';
+  const failedInput = values.failed_block?.failed_input?.value || '0';
+  const untestedInput = values.untested_block?.untested_input?.value || '0';
+
+  // Parse values
+  const coverageFormatted = parseFloat(coverageInput) || 0;
+  const totalPassed = parseInt(passedInput, 10) || 0;
+  const totalFailed = parseInt(failedInput, 10) || 0;
+  const totalNotTested = parseInt(untestedInput, 10) || 0;
+  const scopeTest = parseInt(testcasesInput, 10) || 0;
+
   console.log('=== Modal 3 Debug (Report) ===');
-  console.log('notionThreadLink:', notionThreadLink);
-  console.log('channelId:', channelId);
-  console.log('threadTs:', threadTs);
+  console.log('coverage:', coverageFormatted);
+  console.log('totalPassed:', totalPassed);
+  console.log('totalFailed:', totalFailed);
+  console.log('totalNotTested:', totalNotTested);
   console.log('sheetName:', sheetName);
-  console.log('coverageData:', coverageData);
   console.log('================================');
 
   let replyChannelId = channelId;
@@ -810,7 +868,6 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
 
   try {
     // Update Notion: status + progress from coverage
-    const coverageFormatted = parseFloat(coverageData.coverage || 0);
     await updateNotionTaskStatus(notionPageId, status, coverageFormatted);
 
     // Update Slack Thread in Notion if we have thread info
@@ -828,10 +885,10 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
 
     await ack({ response_action: 'clear' });
 
-    // Build report message - Notion format
+    // Build report message
     const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const coverageDisplay = coverageFormatted.toFixed(2);
-    const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
+    const testcasesFormatted = `${scopeTest} cases`;
     const testCaseUrl = context?.testCaseUrl || '';
 
     // Notion format
@@ -840,9 +897,9 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     notionReport += `Total Coverage Test: ${coverageDisplay}%\n`;
     notionReport += `Testcases: ${testcasesFormatted}`;
     if (testCaseUrl) notionReport += ` (${testCaseUrl})`;
-    notionReport += `\nPassed Test: ${coverageData.totalPassed || 0} cases\n`;
-    notionReport += `Failed Test: ${coverageData.totalFailed || 0} cases\n`;
-    notionReport += `Untested Test: ${coverageData.totalNotTested || 0} cases`;
+    notionReport += `\nPassed Test: ${totalPassed} cases\n`;
+    notionReport += `Failed Test: ${totalFailed} cases\n`;
+    notionReport += `Untested Test: ${totalNotTested} cases`;
     if (notes) notionReport += `\nNotes: ${notes}`;
 
     // Slack format
@@ -852,9 +909,9 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     slackReport += `*Total Coverage Test:* ${coverageDisplay}%\n`;
     slackReport += `Test Cases: ${testcasesFormatted}`;
     if (testCaseUrl) slackReport += ` (<${testCaseUrl}|link>)`;
-    slackReport += `\nPassed Test: ${coverageData.totalPassed || 0} cases\n`;
-    slackReport += `Failed Test: ${coverageData.totalFailed || 0} cases\n`;
-    slackReport += `Untested Test: ${coverageData.totalNotTested || 0} cases\n\n`;
+    slackReport += `\nPassed Test: ${totalPassed} cases\n`;
+    slackReport += `Failed Test: ${totalFailed} cases\n`;
+    slackReport += `Untested Test: ${totalNotTested} cases\n\n`;
     if (notes) slackReport += `*Notes:*\n${notes}\n\n`;
     if (ccUsers.length > 0) {
       const ccFormatted = ccUsers.map(u => `<@${u}>`).join(' ');
