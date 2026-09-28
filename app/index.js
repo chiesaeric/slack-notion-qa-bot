@@ -424,9 +424,9 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
       threadLink: threadLink || context?.threadLink || '',
     });
 
-    // Success modal - use 'clear' to close all modals
+    // Success modal - update view to show success
     await ack({
-      response_action: 'clear',
+      response_action: 'update',
       view: {
         type: 'modal',
         title: { type: 'plain_text', text: '✅ Task Created', emoji: true },
