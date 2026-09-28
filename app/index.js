@@ -424,8 +424,8 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
       threadLink: threadLink || context?.threadLink || '',
     });
 
-    // Clear all views - modal will close
-    await ack({});
+    // Clear all modals from stack
+    await ack({ response_action: 'clear' });
 
     // Reply to thread with Notion link
     if (channelId && threadTs) {
