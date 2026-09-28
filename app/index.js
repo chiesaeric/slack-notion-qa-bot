@@ -428,17 +428,8 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
             },
             label: { type: 'plain_text', text: 'Environment / Sheet Name *', emoji: true },
           },
-          {
-            type: 'context',
-            elements: [
-              {
-                type: 'mrkdwn',
-                text: 'Enter the sheet/environment name to fetch coverage data.',
-              },
-            ],
-          },
         ],
-        submit: { type: 'plain_text', text: 'Fetch Coverage', emoji: true },
+        submit: { type: 'plain_text', text: 'Submit Report', emoji: true },
         close: { type: 'plain_text', text: 'Cancel', emoji: true },
       },
     });
@@ -705,61 +696,66 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     // Format coverage for display
     const coverageFormatted = parseFloat(coverageData.coverage || 0).toFixed(2);
     const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
-    console.log('Coverage formatted:', coverageFormatted);
 
-    console.log('Pushing Modal 4...');
+    // ============================================
+    // SKIP Modal 4 - Direct update + reply
+    // views.push seems blocked in this environment
+    // ============================================
 
-    // Push Modal 4 - Report Preview
-    try {
-      const ackResult = await ack({
-        response_action: 'push',
-        view: {
-          type: 'modal',
-          callback_id: 'update_task_modal_step4',
-          title: { type: 'plain_text', text: 'Report Preview', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*[Testing Report] ${taskName}*\n> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n> Env: ${env}\n\n> *Total Coverage Test:* ${coverageFormatted}%\n\nTest Cases: ${testcasesFormatted}\nPassed Test: ${coverageData.totalPassed || 0} cases\nFailed Test: ${coverageData.totalFailed || 0} cases\nUntested Test: ${coverageData.totalNotTested || 0} cases\n\n*Notes:*\n-`,
-              },
-            },
-            {
-              type: 'divider',
-            },
-            {
-              type: 'input',
-              block_id: 'notes_block',
-              element: {
-                type: 'plain_text_input',
-                action_id: 'notes_input',
-                placeholder: { type: 'plain_text', text: 'Enter any additional notes...' },
-                multiline: true,
-              },
-              label: { type: 'plain_text', text: 'Notes', emoji: true },
-              optional: true,
-            },
-            {
-              type: 'input',
-              block_id: 'cc_block',
-              element: {
-                type: 'multi_conversations_select',
-                action_id: 'cc_input',
-                placeholder: { type: 'plain_text', text: 'Select people to notify...' },
-              },
-              label: { type: 'plain_text', text: 'CC (Slack mentions)', emoji: true },
-              optional: true,
-            },
-          ],
-          submit: { type: 'plain_text', text: 'Submit Report', emoji: true },
-          close: { type: 'plain_text', text: 'Cancel', emoji: true },
+    // Update Notion: status + progress from coverage
+    await updateNotionTaskStatus(notionPageId, status, coverageFormatted);
+
+    // Update Test Case URL in Notion if provided
+    if (testCaseUrl) {
+      const { Client } = require('@notionhq/client');
+      const notion = new Client({ auth: process.env.NOTION_API_KEY });
+      await notion.pages.update({
+        page_id: notionPageId,
+        properties: {
+          'Test Case': { url: testCaseUrl },
         },
       });
-      console.log('Modal 4 pushed successfully, ackResult:', ackResult);
-    } catch (ackErr) {
-      console.error('Error pushing Modal 4:', ackErr.message);
     }
+
+    await ack({ response_action: 'clear' });
+
+    // Build report message
+    const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const reportMsg = `*[Testing Report] ${taskName}*
+> Date: ${today}
+> Env: ${env}
+
+> *Total Coverage Test:* ${coverageFormatted}%
+
+Test Cases: ${testcasesFormatted}
+Passed Test: ${coverageData.totalPassed || 0} cases
+Failed Test: ${coverageData.totalFailed || 0} cases
+Untested Test: ${coverageData.totalNotTested || 0} cases`;
+
+    // Determine where to post
+    let replyChannelId = channelId;
+    let replyThreadTs = threadTs;
+
+    if (threadLink) {
+      const parsed = parseThreadLink(threadLink);
+      if (parsed) {
+        replyChannelId = parsed.channelId;
+        replyThreadTs = parsed.threadTs;
+      }
+    }
+
+    // Reply with report in thread
+    if (replyChannelId && replyThreadTs) {
+      await client.chat.postMessage({
+        channel: replyChannelId,
+        thread_ts: replyThreadTs,
+        text: reportMsg,
+      });
+    }
+
+    console.log('Report sent successfully');
+    return;
   } catch (error) {
     console.error('Error fetching coverage data:', error);
 
