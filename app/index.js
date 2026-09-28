@@ -3,6 +3,7 @@ const { App } = require('@slack/bolt');
 const { handleCreateTaskModal, handleUpdateTaskModal, handleReportTaskModal } = require('../views/modals');
 const { createNotionTask, updateNotionTaskStatus, getThreadLinkFromPage, getPageInfo, parseNotionPageUrl } = require('../utils/notion');
 const { fetchTestCoverageData, parseSpreadsheetUrl } = require('../utils/googleSheets');
+const slackNotionUserMap = require('../slack_notion_user_map.json');
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -29,6 +30,18 @@ function getStatusEmoji(status) {
     'Released': '🚀',
   };
   return emojiMap[status] || '⭕';
+}
+
+// Helper function to convert Slack ID to Notion ID
+function slackToNotionUserId(slackUserId) {
+  return slackNotionUserMap[slackUserId] || null;
+}
+
+// Helper function to convert Slack IDs to Notion IDs for multiple users
+function slackToNotionUserIds(slackUserIds) {
+  return slackUserIds
+    .map(id => slackNotionUserMap[id])
+    .filter(id => id !== undefined);
 }
 
 // ============================================
@@ -1053,11 +1066,11 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             type: 'input',
             block_id: 'assignee_block',
             element: {
-              type: 'plain_text_input',
+              type: 'multi_conversations_select',
               action_id: 'assignee_input',
-              placeholder: { type: 'plain_text', text: 'Enter assignee name(s)...' },
+              placeholder: { type: 'plain_text', text: 'Select assignee(s)...' },
             },
-            label: { type: 'plain_text', text: 'Assignee', emoji: true },
+            label: { type: 'plain_text', text: 'Assignee (Slack)', emoji: true },
             optional: true,
           },
           {
@@ -1189,11 +1202,11 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             type: 'input',
             block_id: 'assignee_block',
             element: {
-              type: 'plain_text_input',
+              type: 'multi_conversations_select',
               action_id: 'assignee_input',
-              placeholder: { type: 'plain_text', text: 'Enter assignee name(s)...' },
+              placeholder: { type: 'plain_text', text: 'Select assignee(s)...' },
             },
-            label: { type: 'plain_text', text: 'Assignee', emoji: true },
+            label: { type: 'plain_text', text: 'Assignee (Slack)', emoji: true },
             optional: true,
           },
           {
@@ -1245,9 +1258,18 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
   const description = values.description_block?.description_input?.value || '';
   const priority = values.priority_block?.priority_input?.selected_option?.value || 'Medium';
   const dueDate = values.due_date_block?.due_date_input?.selected_date || null;
-  const assignee = values.assignee_block?.assignee_input?.value || '';
+  const assigneeSlackIds = values.assignee_block?.assignee_input?.selected_conversations || [];
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
   const threadLink = values.thread_link_block?.thread_link_input?.value || '';
+
+  // Convert Slack IDs to Notion IDs for Notion API
+  const assigneeNotionIds = slackToNotionUserIds(assigneeSlackIds);
+  const assigneeNotion = assigneeNotionIds.length > 0 ? assigneeNotionIds : null;
+
+  // For reply, use Slack mention format
+  const assigneeSlackMention = assigneeSlackIds.length > 0
+    ? assigneeSlackIds.map(id => `<@${id}>`).join(' ')
+    : '';
 
   const context = modalContext.get(body.user.id);
   const channelId = context?.channelId;
@@ -1261,7 +1283,7 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
       description,
       priority,
       dueDate,
-      assignee,
+      assignee: assigneeNotion,
       labels,
       threadLink: threadLink || context?.threadLink || '',
     });
@@ -1272,7 +1294,7 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
       await client.chat.postMessage({
         channel: channelId,
         thread_ts: threadTs,
-        text: `✅ *Task Created!*\n\n> *Project:* ${taskName}${assignee ? `\n> *Assignee:* ${assignee}` : ''}\n> *Priority:* ${priorityEmoji} ${priority}\n> 🔗 <${notionResult.url}|Open in Notion>`,
+        text: `✅ *Task Created!*\n\n> *Project:* ${taskName}${assigneeSlackMention ? `\n> *Assignee:* ${assigneeSlackMention}` : ''}\n> *Priority:* ${priorityEmoji} ${priority}\n> 🔗 <${notionResult.url}|Open in Notion>`,
       });
     }
 
