@@ -94,6 +94,7 @@ function parseThreadLink(threadLink) {
   const patterns = [
     /archives\/([A-Z0-9]+)\/p([A-Z0-9]+)/i,
     /channels\/([A-Z0-9]+)\/([0-9]+\.[0-9]+)/i,
+    /client\/([A-Z0-9]+)\/([0-9]+\.[0-9]+)/i,
   ];
 
   for (const pattern of patterns) {
