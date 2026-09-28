@@ -13,6 +13,10 @@ const app = new App({
 // User token for reading thread messages
 const userToken = process.env.SLACK_USER_TOKEN;
 
+// Store context per user for thread reply
+// Key: trigger_id, Value: { channelId, threadTs }
+const modalContext = new Map();
+
 // ============================================
 // HELPER: Extract data from thread messages
 // ============================================
@@ -105,6 +109,12 @@ function parseThreadLink(threadLink) {
 app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
   await ack();
 
+  // Store context for this trigger
+  modalContext.set(command.trigger_id, {
+    channelId: command.channel_id,
+    threadTs: command.message_ts,
+  });
+
   try {
     await client.views.open({
       trigger_id: command.trigger_id,
@@ -122,14 +132,107 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   const values = body.view.state.values;
   
   const threadLink = values.thread_link_block?.thread_link_input?.value || '';
-  
-  // Get channel and thread info for later reply
-  const channelId = body.container?.channel_id;
-  const threadTs = body.container?.thread_ts || body.container?.message_ts;
 
-  // If no thread link, just create task directly
+  // Store context for this modal using trigger_id
+  modalContext.set(body.trigger_id, {
+    channelId: body.container?.channel_id || '',
+    threadTs: body.container?.thread_ts || body.container?.message_ts || '',
+  });
+
+  // If no thread link, just show form
   if (!threadLink) {
-    await handleTaskCreation({ ack, body, client, channelId, threadTs });
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        callback_id: 'create_task_modal_final',
+        title: { type: 'plain_text', text: 'Create QA Task', emoji: true },
+        blocks: [
+          {
+            type: 'input',
+            block_id: 'thread_link_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'thread_link_input',
+              placeholder: { type: 'plain_text', text: 'Paste Slack thread link here...' },
+            },
+            label: { type: 'plain_text', text: 'Thread Link', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'task_name_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'task_name_input',
+              placeholder: { type: 'plain_text', text: 'Enter task name...' },
+            },
+            label: { type: 'plain_text', text: 'Task Name *', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'description_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'description_input',
+              placeholder: { type: 'plain_text', text: 'Enter task description...' },
+              multiline: true,
+            },
+            label: { type: 'plain_text', text: 'Description', emoji: true },
+            optional: true,
+          },
+          {
+            type: 'input',
+            block_id: 'priority_block',
+            element: {
+              type: 'static_select',
+              action_id: 'priority_input',
+              placeholder: { type: 'plain_text', text: 'Select priority' },
+              options: [
+                { text: { type: 'plain_text', text: '🔴 High', emoji: true }, value: 'High' },
+                { text: { type: 'plain_text', text: '🟡 Medium', emoji: true }, value: 'Medium' },
+                { text: { type: 'plain_text', text: '🟢 Low', emoji: true }, value: 'Low' },
+              ],
+            },
+            label: { type: 'plain_text', text: 'Priority *', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'due_date_block',
+            element: {
+              type: 'datepicker',
+              action_id: 'due_date_input',
+              placeholder: { type: 'plain_text', text: 'Select due date' },
+            },
+            label: { type: 'plain_text', text: 'Due Date', emoji: true },
+            optional: true,
+          },
+          {
+            type: 'input',
+            block_id: 'assignee_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'assignee_input',
+              placeholder: { type: 'plain_text', text: 'Enter assignee name(s)...' },
+            },
+            label: { type: 'plain_text', text: 'Assignee', emoji: true },
+            optional: true,
+          },
+          {
+            type: 'input',
+            block_id: 'labels_block',
+            element: {
+              type: 'multi_conversations_select',
+              action_id: 'labels_input',
+              placeholder: { type: 'plain_text', text: 'Select channels for labels' },
+            },
+            label: { type: 'plain_text', text: 'Labels / Channels', emoji: true },
+            optional: true,
+          },
+        ],
+        submit: { type: 'plain_text', text: 'Create', emoji: true },
+        close: { type: 'plain_text', text: 'Cancel', emoji: true },
+      },
+    });
     return;
   }
 
@@ -137,7 +240,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   const parsed = parseThreadLink(threadLink);
   
   if (!parsed) {
-    // Invalid link format
     await ack({
       response_action: 'update',
       view: {
@@ -148,7 +250,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `❌ *Invalid thread link format*\n\nPlease use a valid Slack thread link:\n\`https://xxx.slack.com/archives/.../p...\`\n\n<thread_link> example:\n\`https://company.slack.com/archives/C012345/p9876543210\``,
+              text: `❌ *Invalid thread link format*\n\nPlease use a valid Slack thread link:\n\`https://xxx.slack.com/archives/.../p...\``,
             },
           },
         ],
@@ -168,7 +270,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
     const messages = threadReplies.messages || [];
     const { projectName, dueDate, description } = extractDataFromThread(messages);
 
-    // Use push instead of update to preserve container context
+    // Push new view with auto-filled data
     await ack({
       response_action: 'push',
       view: {
@@ -176,7 +278,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
         callback_id: 'create_task_modal_final',
         title: { type: 'plain_text', text: 'Create QA Task', emoji: true },
         blocks: [
-          // Thread Link (hidden - stored as placeholder)
           {
             type: 'input',
             block_id: 'thread_link_block',
@@ -187,7 +288,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             },
             label: { type: 'plain_text', text: 'Thread Link', emoji: true },
           },
-          // Project Name
           {
             type: 'input',
             block_id: 'task_name_block',
@@ -199,7 +299,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             },
             label: { type: 'plain_text', text: 'Task Name *', emoji: true },
           },
-          // Description
           {
             type: 'input',
             block_id: 'description_block',
@@ -213,7 +312,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             label: { type: 'plain_text', text: 'Description', emoji: true },
             optional: true,
           },
-          // Priority
           {
             type: 'input',
             block_id: 'priority_block',
@@ -229,7 +327,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             },
             label: { type: 'plain_text', text: 'Priority *', emoji: true },
           },
-          // Due Date
           {
             type: 'input',
             block_id: 'due_date_block',
@@ -242,7 +339,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             label: { type: 'plain_text', text: 'Due Date', emoji: true },
             optional: true,
           },
-          // Assignee
           {
             type: 'input',
             block_id: 'assignee_block',
@@ -254,7 +350,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             label: { type: 'plain_text', text: 'Assignee', emoji: true },
             optional: true,
           },
-          // Labels
           {
             type: 'input',
             block_id: 'labels_block',
@@ -274,7 +369,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   } catch (error) {
     console.error('Error fetching thread:', error);
     
-    // Return modal with error message
     await ack({
       response_action: 'update',
       view: {
@@ -285,7 +379,7 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `❌ *Could not read thread*\n\nError: ${error.message}\n\nPlease check:\n• Thread link is valid\n• Bot has access to that channel`,
+              text: `❌ *Could not read thread*\n\nError: ${error.message}`,
             },
           },
         ],
@@ -308,9 +402,10 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
   const assignee = values.assignee_block?.assignee_input?.value || '';
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
 
-  // Get channel and thread from container (preserved via push)
-  const channelId = body.container?.channel_id;
-  const threadTs = body.container?.thread_ts || body.container?.message_ts;
+  // Retrieve stored context
+  const context = modalContext.get(body.trigger_id);
+  const channelId = context?.channelId;
+  const threadTs = context?.threadTs;
 
   const priorityEmoji = priority === 'High' ? '🔴' : priority === 'Medium' ? '🟡' : '🟢';
 
