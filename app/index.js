@@ -18,6 +18,19 @@ const userToken = process.env.SLACK_USER_TOKEN;
 // Key: user_id, Value: { channelId, threadTs, threadLink, notionPageId }
 const modalContext = new Map();
 
+// Helper function to get emoji for status
+function getStatusEmoji(status) {
+  const emojiMap = {
+    'Not Started': '⭕',
+    'Created Test Plan': '📋',
+    'In Staging': '🔄',
+    'In Pre-staging': '🔄',
+    'Ready to Release': '✅',
+    'Released': '🚀',
+  };
+  return emojiMap[status] || '⭕';
+}
+
 // ============================================
 // HELPER: Extract data from thread messages
 // ============================================
@@ -525,6 +538,10 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
           type: 'static_select',
           action_id: 'status_input',
           placeholder: { type: 'plain_text', text: 'Select status' },
+          initial_option: pageInfo.status ? {
+            text: { type: 'plain_text', text: getStatusEmoji(pageInfo.status) + ' ' + pageInfo.status },
+            value: pageInfo.status,
+          } : undefined,
           options: [
             { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
             { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
@@ -543,6 +560,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
           type: 'plain_text_input',
           action_id: 'progress_input',
           placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' },
+          initial_value: String(pageInfo.progress || '0'),
         },
         label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
         optional: true,
