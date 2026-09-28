@@ -93,14 +93,22 @@ async function createNotionTask(taskData) {
           {
             type: 'text',
             text: {
-              content: `Link Request: ${threadLink}`,
+              content: 'Link Request: ',
+            },
+          },
+          {
+            type: 'text',
+            link: {
+              url: threadLink,
+            },
+            text: {
+              content: threadLink,
             },
           },
         ],
       });
     } catch (commentError) {
       console.error('Error creating comment:', commentError);
-      // Don't fail the whole operation if comment fails
     }
   }
 
