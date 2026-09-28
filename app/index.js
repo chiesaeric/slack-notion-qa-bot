@@ -244,7 +244,13 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
 
     console.log('Building Modal 2 view...');
 
-    // Modal 2 view - simple version
+    // Check if task has test case
+    const hasTestCase = !!pageInfo.testCaseUrl;
+    const testCaseInfo = hasTestCase
+      ? `> *Test Case:* Attached`
+      : `> *Test Case:* Not attached yet`;
+
+    // Modal 2 view with task info
     await ack({
       response_action: 'push',
       view: {
@@ -266,7 +272,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%`,
+              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%\n${testCaseInfo}`,
             },
           },
           { type: 'divider' },
@@ -298,7 +304,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             element: {
               type: 'plain_text_input',
               action_id: 'sheet_input',
-              placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
+              placeholder: { type: 'plain_text', text: hasTestCase ? 'Wajib: Pre-Staging / Staging' : 'Opsional: untuk input manual' },
             },
             label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
             optional: true,
