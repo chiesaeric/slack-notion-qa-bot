@@ -710,51 +710,56 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     console.log('Pushing Modal 4...');
 
     // Push Modal 4 - Report Preview
-    await ack({
-      response_action: 'push',
-      view: {
-        type: 'modal',
-        callback_id: 'update_task_modal_step4',
-        title: { type: 'plain_text', text: 'Report Preview', emoji: true },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*[Testing Report] ${taskName}*\n> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n> Env: ${env}\n\n> *Total Coverage Test:* ${coverageFormatted}%\n\nTest Cases: ${testcasesFormatted}\nPassed Test: ${coverageData.totalPassed || 0} cases\nFailed Test: ${coverageData.totalFailed || 0} cases\nUntested Test: ${coverageData.totalNotTested || 0} cases\n\n*Notes:*\n-`,
+    try {
+      const ackResult = await ack({
+        response_action: 'push',
+        view: {
+          type: 'modal',
+          callback_id: 'update_task_modal_step4',
+          title: { type: 'plain_text', text: 'Report Preview', emoji: true },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*[Testing Report] ${taskName}*\n> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n> Env: ${env}\n\n> *Total Coverage Test:* ${coverageFormatted}%\n\nTest Cases: ${testcasesFormatted}\nPassed Test: ${coverageData.totalPassed || 0} cases\nFailed Test: ${coverageData.totalFailed || 0} cases\nUntested Test: ${coverageData.totalNotTested || 0} cases\n\n*Notes:*\n-`,
+              },
             },
-          },
-          {
-            type: 'divider',
-          },
-          {
-            type: 'input',
-            block_id: 'notes_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'notes_input',
-              placeholder: { type: 'plain_text', text: 'Enter any additional notes...' },
-              multiline: true,
+            {
+              type: 'divider',
             },
-            label: { type: 'plain_text', text: 'Notes', emoji: true },
-            optional: true,
-          },
-          {
-            type: 'input',
-            block_id: 'cc_block',
-            element: {
-              type: 'multi_conversations_select',
-              action_id: 'cc_input',
-              placeholder: { type: 'plain_text', text: 'Select people to notify...' },
+            {
+              type: 'input',
+              block_id: 'notes_block',
+              element: {
+                type: 'plain_text_input',
+                action_id: 'notes_input',
+                placeholder: { type: 'plain_text', text: 'Enter any additional notes...' },
+                multiline: true,
+              },
+              label: { type: 'plain_text', text: 'Notes', emoji: true },
+              optional: true,
             },
-            label: { type: 'plain_text', text: 'CC (Slack mentions)', emoji: true },
-            optional: true,
-          },
-        ],
-        submit: { type: 'plain_text', text: 'Submit Report', emoji: true },
-        close: { type: 'plain_text', text: 'Cancel', emoji: true },
-      },
-    });
+            {
+              type: 'input',
+              block_id: 'cc_block',
+              element: {
+                type: 'multi_conversations_select',
+                action_id: 'cc_input',
+                placeholder: { type: 'plain_text', text: 'Select people to notify...' },
+              },
+              label: { type: 'plain_text', text: 'CC (Slack mentions)', emoji: true },
+              optional: true,
+            },
+          ],
+          submit: { type: 'plain_text', text: 'Submit Report', emoji: true },
+          close: { type: 'plain_text', text: 'Cancel', emoji: true },
+        },
+      });
+      console.log('Modal 4 pushed successfully, ackResult:', ackResult);
+    } catch (ackErr) {
+      console.error('Error pushing Modal 4:', ackErr.message);
+    }
   } catch (error) {
     console.error('Error fetching coverage data:', error);
 
