@@ -27,3 +27,6 @@ data/
 # Build
 dist/
 build/
+
+# User mappings (sensitive)
+slack_notion_user_map.json
