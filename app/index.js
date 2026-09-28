@@ -244,39 +244,66 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
 
     console.log('Building Modal 2 view...');
 
-    // Simple test view first
-    const testView = {
-      type: 'modal',
-      callback_id: 'update_task_modal_step2',
-      title: { type: 'plain_text', text: 'Update Task', emoji: true },
-      blocks: [
-        {
-          type: 'input',
-          block_id: 'status_block',
-          element: {
-            type: 'static_select',
-            action_id: 'status_input',
-            placeholder: { type: 'plain_text', text: 'Select status' },
-            options: [
-              { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
-              { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
-              { text: { type: 'plain_text', text: '🧪 In Prestaging', emoji: true }, value: 'In Prestaging' },
-              { text: { type: 'plain_text', text: '🧪 In Staging', emoji: true }, value: 'In Staging' },
-              { text: { type: 'plain_text', text: '✅ Ready to Release', emoji: true }, value: 'Ready to Release' },
-              { text: { type: 'plain_text', text: '🚀 Released', emoji: true }, value: 'Released' },
-            ],
-          },
-          label: { type: 'plain_text', text: 'Status *', emoji: true },
-        },
-      ],
-      submit: { type: 'plain_text', text: 'Next', emoji: true },
-      close: { type: 'plain_text', text: 'Cancel', emoji: true },
-    };
-
-    console.log('Pushing Modal 2...');
+    // Modal 2 view with task info
     await ack({
       response_action: 'push',
-      view: testView,
+      view: {
+        type: 'modal',
+        callback_id: 'update_task_modal_step2',
+        title: { type: 'plain_text', text: 'Update Task', emoji: true },
+        blocks: [
+          {
+            type: 'input',
+            block_id: 'notion_link_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'notion_link_input',
+              initial_value: notionLink,
+            },
+            label: { type: 'plain_text', text: 'Notion Link', emoji: true },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%`,
+            },
+          },
+          { type: 'divider' },
+          {
+            type: 'input',
+            block_id: 'status_block',
+            element: {
+              type: 'static_select',
+              action_id: 'status_input',
+              placeholder: { type: 'plain_text', text: 'Select status' },
+              options: [
+                { text: { type: 'plain_text', text: 'Not Started' }, value: 'Not Started' },
+                { text: { type: 'plain_text', text: 'Created Test Plan' }, value: 'Created Test Plan' },
+                { text: { type: 'plain_text', text: 'In Prestaging' }, value: 'In Prestaging' },
+                { text: { type: 'plain_text', text: 'In Staging' }, value: 'In Staging' },
+                { text: { type: 'plain_text', text: 'Ready to Release' }, value: 'Ready to Release' },
+                { text: { type: 'plain_text', text: 'Released' }, value: 'Released' },
+              ],
+            },
+            label: { type: 'plain_text', text: 'Status *', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'sheet_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'sheet_input',
+              placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
+            },
+            label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
+            optional: true,
+          },
+          { type: 'divider' },
+        ],
+        submit: { type: 'plain_text', text: 'Next', emoji: true },
+        close: { type: 'plain_text', text: 'Cancel', emoji: true },
+      },
     });
     console.log('Modal 2 pushed!');
   } catch (error) {
