@@ -692,6 +692,7 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
       return;
     }
 
+    console.log('Storing in context...');
     // Store in context
     modalContext.set(body.user.id, {
       ...context,
@@ -699,10 +700,12 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
       env: env,
       coverageData: coverageData,
     });
+    console.log('Context stored');
 
     // Format coverage for display
     const coverageFormatted = parseFloat(coverageData.coverage || 0).toFixed(2);
     const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
+    console.log('Coverage formatted:', coverageFormatted);
 
     console.log('Pushing Modal 4...');
 
