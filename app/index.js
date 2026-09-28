@@ -1012,19 +1012,9 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
       ? `<${testcaseLink}|${testcasesFormatted}> (link)` 
       : `${testcasesFormatted}`;
     
-    // Format CC for Notion (plain text of user IDs/names)
-    const ccFormatted = ccUsers.length > 0 ? ccUsers.join(', ') : '';
+    const reportTitle = `[Testing Report] ${taskName}`;
     
-    const reportTitle = `[Testing Report] Name: ${taskName}`;
-    
-    const reportContent = `${reportTitle}
-Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} Env: ${env}
-Total Coverage Test: ${coverageFormatted}%
-Testcases: ${testcaseLine}
-Passed Test: ${coverageFormatted}%
-Failed Test: ${failed} cases
-Untested Test: ${untested} cases
-Notes: ${notes || '-'}`;
+    const reportContent = `${reportTitle}\nDate: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} Env: ${env}\nTotal Coverage Test: ${coverageFormatted}%\nTestcases: ${testcaseLine}\nPassed Test: ${coverageFormatted}%\nFailed Test: ${failed} cases\nUntested Test: ${untested} cases\nNotes: ${notes || '-'}`;
 
     await notion.comments.create({
       parent: { page_id: notionPageId },
@@ -1058,16 +1048,17 @@ Notes: ${notes || '-'}`;
     // Format CC mentions for Slack
     const ccLine = ccUsers.length > 0 ? ccUsers.map(userId => `<@${userId}>`).join(' ') : '';
     
-    let reportText = `*[Testing Report] Name: ${taskName}*\n`;
-    reportText += `> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} Env: ${env}\n`;
-    reportText += `> Total Coverage Test: ${coverageFormatted}%\n\n`;
+    let reportText = `*[Testing Report] ${taskName}*\n`;
+    reportText += `> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n`;
+    reportText += `> Env: ${env}\n\n`;
+    reportText += `> *Total Coverage Test:* ${coverageFormatted}%\n\n`;
     reportText += `Testcases: ${testcaseLineFormatted}\n`;
     reportText += `Passed Test: ${coverageFormatted}%\n`;
     reportText += `Failed Test: ${failed} cases\n`;
     reportText += `Untested Test: ${untested} cases\n\n`;
-    reportText += `Notes: ${notes || '-'}\n`;
+    reportText += `*Notes:*\n${notes || '-'}`;
     if (ccLine) {
-      reportText += `cc: ${ccLine}`;
+      reportText += `\n\ncc: ${ccLine}`;
     }
     // Reply to thread if we have channel and thread_ts
     if (replyChannelId && replyThreadTs) {
