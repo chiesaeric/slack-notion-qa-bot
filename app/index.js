@@ -495,12 +495,80 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
       getThreadLinkFromPage(pageId),
     ]);
 
+    // Build modal blocks dynamically
+    const blocks = [
+      {
+        type: 'input',
+        block_id: 'notion_link_block',
+        element: {
+          type: 'plain_text_input',
+          action_id: 'notion_link_input',
+          initial_value: notionLink,
+        },
+        label: { type: 'plain_text', text: 'Notion Link', emoji: true },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%\n> *Test Case:* ${pageInfo.testCaseUrl ? '✅ Attached' : '❌ Not Attached'}`,
+        },
+      },
+      {
+        type: 'divider',
+      },
+      {
+        type: 'input',
+        block_id: 'status_block',
+        element: {
+          type: 'static_select',
+          action_id: 'status_input',
+          placeholder: { type: 'plain_text', text: 'Select status' },
+          options: [
+            { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
+            { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
+            { text: { type: 'plain_text', text: '🔄 In Staging', emoji: true }, value: 'In Staging' },
+            { text: { type: 'plain_text', text: '🔄 In Pre-staging', emoji: true }, value: 'In Pre-staging' },
+            { text: { type: 'plain_text', text: '✅ Ready to Release', emoji: true }, value: 'Ready to Release' },
+            { text: { type: 'plain_text', text: '🚀 Released', emoji: true }, value: 'Released' },
+          ],
+        },
+        label: { type: 'plain_text', text: 'Status *', emoji: true },
+      },
+      {
+        type: 'input',
+        block_id: 'progress_block',
+        element: {
+          type: 'plain_text_input',
+          action_id: 'progress_input',
+          placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' },
+        },
+        label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
+        optional: true,
+      },
+    ];
+
+    // If no Test Case attached, add field for it
+    if (!pageInfo.testCaseUrl) {
+      blocks.push({
+        type: 'input',
+        block_id: 'testcase_block',
+        element: {
+          type: 'plain_text_input',
+          action_id: 'testcase_input',
+          placeholder: { type: 'plain_text', text: 'Paste test case spreadsheet link here...' },
+        },
+        label: { type: 'plain_text', text: 'Test Cases *', emoji: true },
+      });
+    }
+
     modalContext.set(body.user.id, {
       channelId: body.container?.channel_id || '',
       threadTs: body.container?.thread_ts || body.container?.message_ts || '',
       notionPageId: pageId,
       notionLink: notionLink,
       threadLink: threadLink || '',
+      testCaseUrl: pageInfo.testCaseUrl || '',
     });
 
     await ack({
@@ -509,57 +577,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
         type: 'modal',
         callback_id: 'update_task_modal_final',
         title: { type: 'plain_text', text: 'Update Task', emoji: true },
-        blocks: [
-          {
-            type: 'input',
-            block_id: 'notion_link_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'notion_link_input',
-              initial_value: notionLink,
-            },
-            label: { type: 'plain_text', text: 'Notion Link', emoji: true },
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%`,
-            },
-          },
-          {
-            type: 'divider',
-          },
-          {
-            type: 'input',
-            block_id: 'status_block',
-            element: {
-              type: 'static_select',
-              action_id: 'status_input',
-              placeholder: { type: 'plain_text', text: 'Select status' },
-              options: [
-                { text: { type: 'plain_text', text: '📋 Created Test Plan', emoji: true }, value: 'Created Test Plan' },
-                { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
-                { text: { type: 'plain_text', text: '🔄 In Staging', emoji: true }, value: 'In Staging' },
-                { text: { type: 'plain_text', text: '🔄 In Pre-staging', emoji: true }, value: 'In Pre-staging' },
-                { text: { type: 'plain_text', text: '✅ Ready to Release', emoji: true }, value: 'Ready to Release' },
-                { text: { type: 'plain_text', text: '🚀 Released', emoji: true }, value: 'Released' },
-              ],
-            },
-            label: { type: 'plain_text', text: 'Status *', emoji: true },
-          },
-          {
-            type: 'input',
-            block_id: 'progress_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'progress_input',
-              placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' },
-            },
-            label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
-            optional: true,
-          },
-        ],
+        blocks: blocks,
         submit: { type: 'plain_text', text: 'Update', emoji: true },
         close: { type: 'plain_text', text: 'Cancel', emoji: true },
       },
@@ -659,6 +677,7 @@ app.view('update_task_modal_final', async ({ ack, body, client }) => {
   
   const status = values.status_block?.status_input?.selected_option?.value || '';
   const progress = values.progress_block?.progress_input?.value || '';
+  const testCaseInput = values.testcase_block?.testcase_input?.value || '';
 
   const context = modalContext.get(body.user.id);
   const channelId = context?.channelId;
@@ -666,9 +685,45 @@ app.view('update_task_modal_final', async ({ ack, body, client }) => {
   const notionPageId = context?.notionPageId;
   const threadLink = context?.threadLink;
   const notionLink = context?.notionLink;
+  const existingTestCaseUrl = context?.testCaseUrl || '';
+
+  // Validate: if status is "Created Test Plan" and no existing testcase, require testcase input
+  if (status === 'Created Test Plan' && !existingTestCaseUrl && !testCaseInput) {
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Test Case is required when status is "Created Test Plan"*\n\nPlease attach a test case spreadsheet link.`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+    return;
+  }
 
   try {
+    // Update status and progress
     await updateNotionTaskStatus(notionPageId, status, progress ? parseInt(progress, 10) : null);
+
+    // Update Test Case in Notion if provided
+    if (testCaseInput) {
+      const { Client } = require('@notionhq/client');
+      const notion = new Client({ auth: process.env.NOTION_API_KEY });
+      await notion.pages.update({
+        page_id: notionPageId,
+        properties: {
+          'Test Case': { url: testCaseInput },
+        },
+      });
+    }
 
     await ack({ response_action: 'clear' });
 
