@@ -37,9 +37,10 @@ async function createNotionTask(taskData) {
     properties['Due Date'] = { date: { start: dueDate } };
   }
 
-  if (assignee) {
+  // Assignee (people type) - receives array of Notion user IDs
+  if (assignee && assignee.length > 0) {
     properties.Assignee = {
-      rich_text: [{ text: { content: assignee } }],
+      people: assignee.map(id => ({ id })),
     };
   }
 
