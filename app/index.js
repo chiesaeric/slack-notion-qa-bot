@@ -1,7 +1,8 @@
 require('dotenv').config();
 const { App } = require('@slack/bolt');
-const { handleCreateTaskModal, handleUpdateTaskModal } = require('../views/modals');
+const { handleCreateTaskModal, handleUpdateTaskModal, handleReportTaskModal } = require('../views/modals');
 const { createNotionTask, updateNotionTaskStatus, getThreadLinkFromPage, getPageInfo, parseNotionPageUrl } = require('../utils/notion');
+const { fetchTestCoverageData, parseSpreadsheetUrl } = require('../utils/googleSheets');
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -133,6 +134,28 @@ app.command('/qa-bot-update-task', async ({ command, ack, client }) => {
     await client.views.open({
       trigger_id: command.trigger_id,
       view: handleUpdateTaskModal(),
+    });
+  } catch (error) {
+    console.error('Error opening modal:', error);
+  }
+});
+
+// ============================================
+// SLASH COMMAND: /qa-bot-report-task
+// ============================================
+app.command('/qa-bot-report-task', async ({ command, ack, client }) => {
+  await ack();
+
+  modalContext.set(command.user_id, {
+    channelId: command.channel_id,
+    threadTs: '',
+    notionPageId: '',
+  });
+
+  try {
+    await client.views.open({
+      trigger_id: command.trigger_id,
+      view: handleReportTaskModal(),
     });
   } catch (error) {
     console.error('Error opening modal:', error);
@@ -694,6 +717,303 @@ app.view('update_task_modal_final', async ({ ack, body, client }) => {
 });
 
 // ============================================
+// VIEW SUBMISSION - Report Task: Fetch spreadsheet and show data modal
+// ============================================
+app.view('report_task_modal', async ({ ack, body, client }) => {
+  const values = body.view.state.values;
+  
+  const notionLink = values.notion_link_block?.notion_link_input?.value || '';
+  const env = values.env_block?.env_input?.value || '';
+
+  if (!notionLink || !env) {
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Error', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Please fill in all fields*\n\n> Notion Link and Environment are required.`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+    return;
+  }
+
+  const pageId = parseNotionPageUrl(notionLink);
+  
+  if (!pageId) {
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Invalid Notion Link', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Invalid Notion page link format*\n\nPlease use a valid Notion page URL.`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+    return;
+  }
+
+  try {
+    // Get thread link from Notion page
+    const threadLink = await getThreadLinkFromPage(pageId);
+    
+    // Get page info for context
+    const pageInfo = await getPageInfo(pageId);
+
+    // Store context
+    modalContext.set(body.user.id, {
+      channelId: body.container?.channel_id || '',
+      threadTs: body.container?.thread_ts || body.container?.message_ts || '',
+      notionPageId: pageId,
+      notionLink: notionLink,
+      threadLink: threadLink || '',
+      env: env,
+    });
+
+    // Push data entry modal with coverage data summary
+    await ack({
+      response_action: 'push',
+      view: {
+        type: 'modal',
+        callback_id: 'report_task_modal_final',
+        title: { type: 'plain_text', text: '📊 Report QA Task', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📋 *Task:* ${pageInfo.name || 'N/A'}\n🌍 *Env:* ${env}`,
+            },
+          },
+          {
+            type: 'divider',
+          },
+          {
+            type: 'input',
+            block_id: 'coverage_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'coverage_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 85' },
+            },
+            label: { type: 'plain_text', text: 'Coverage (%)', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'total_passed_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'total_passed_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 150' },
+            },
+            label: { type: 'plain_text', text: 'Total Passed', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'total_testing_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'total_testing_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 20' },
+            },
+            label: { type: 'plain_text', text: 'Total In Testing', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'not_tested_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'not_tested_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 30' },
+            },
+            label: { type: 'plain_text', text: 'Total Not Tested', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'total_failed_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'total_failed_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 5' },
+            },
+            label: { type: 'plain_text', text: 'Total Failed', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'notes_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'notes_input',
+              placeholder: { type: 'plain_text', text: 'Enter any additional notes...' },
+              multiline: true,
+            },
+            label: { type: 'plain_text', text: 'Notes', emoji: true },
+            optional: true,
+          },
+          {
+            type: 'input',
+            block_id: 'cc_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'cc_input',
+              placeholder: { type: 'plain_text', text: 'e.g., @john, @jane' },
+            },
+            label: { type: 'plain_text', text: 'CC (people to notify)', emoji: true },
+            optional: true,
+          },
+        ],
+        submit: { type: 'plain_text', text: 'Submit Report', emoji: true },
+        close: { type: 'plain_text', text: 'Cancel', emoji: true },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching Notion page:', error);
+    
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Error', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Could not fetch Notion page*\n\nError: ${error.message}`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+  }
+});
+
+// ============================================
+// FINAL SUBMISSION - Report Task
+// ============================================
+app.view('report_task_modal_final', async ({ ack, body, client }) => {
+  const values = body.view.state.values;
+  
+  const coverage = values.coverage_block?.coverage_input?.value || '0';
+  const totalPassed = values.total_passed_block?.total_passed_input?.value || '0';
+  const totalTesting = values.total_testing_block?.total_testing_input?.value || '0';
+  const notTested = values.not_tested_block?.not_tested_input?.value || '0';
+  const totalFailed = values.total_failed_block?.total_failed_input?.value || '0';
+  const notes = values.notes_block?.notes_input?.value || '';
+  const cc = values.cc_block?.cc_input?.value || '';
+
+  const context = modalContext.get(body.user.id);
+  const channelId = context?.channelId;
+  const threadTs = context?.threadTs;
+  const notionPageId = context?.notionPageId;
+  const notionLink = context?.notionLink;
+  const threadLink = context?.threadLink;
+  const env = context?.env || '';
+
+  const total = parseInt(totalPassed) + parseInt(totalTesting) + parseInt(notTested) + parseInt(totalFailed);
+
+  try {
+    // Add report as comment in Notion
+    const { Client } = require('@notionhq/client');
+    const notion = new Client({ auth: process.env.NOTION_API_KEY });
+    
+    const reportContent = `📊 *Test Report - ${env}*
+${notes ? `📝 *Notes:* ${notes}` : ''}
+${cc ? `👥 *CC:* ${cc}` : ''}
+${'─'.repeat(20)}
+✅ *Passed:* ${totalPassed}
+🔄 *In Testing:* ${totalTesting}
+❌ *Not Tested:* ${notTested}
+❌ *Failed:* ${totalFailed}
+${'─'.repeat(20)}
+📈 *Coverage:* ${coverage}%`;
+
+    await notion.comments.create({
+      parent: { page_id: notionPageId },
+      rich_text: [
+        {
+          type: 'text',
+          text: { content: reportContent },
+        },
+      ],
+    });
+
+    await ack({ response_action: 'clear' });
+
+    // Determine where to reply
+    let replyChannelId = channelId;
+    let replyThreadTs = threadTs;
+
+    if (threadLink) {
+      const parsed = parseThreadLink(threadLink);
+      if (parsed) {
+        replyChannelId = parsed.channelId;
+        replyThreadTs = parsed.threadTs;
+      }
+    }
+
+    // Build report message
+    let reportText = `📊 *Test Report - ${env}*\n\n`;
+    reportText += `✅ *Passed:* ${totalPassed}\n`;
+    reportText += `🔄 *In Testing:* ${totalTesting}\n`;
+    reportText += `❌ *Not Tested:* ${notTested}\n`;
+    reportText += `❌ *Failed:* ${totalFailed}\n`;
+    reportText += `${'─'.repeat(20)}\n`;
+    reportText += `📈 *Coverage:* ${coverage}%\n\n`;
+    if (notes) reportText += `📝 *Notes:* ${notes}\n`;
+    if (cc) reportText += `👥 *CC:* ${cc}\n`;
+    reportText += `🔗 <${notionLink}|Open in Notion>`;
+
+    // Reply to thread if we have channel and thread_ts
+    if (replyChannelId && replyThreadTs) {
+      await client.chat.postMessage({
+        channel: replyChannelId,
+        thread_ts: replyThreadTs,
+        text: reportText,
+      });
+    }
+
+  } catch (error) {
+    console.error('Error submitting report:', error);
+
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Error', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Failed to submit report*\n\n> Error: ${error.message}`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+  }
+});
+
+// ============================================
 // HOME TAB
 // ============================================
 app.event('app_home_opened', async ({ event, client }) => {
@@ -705,7 +1025,7 @@ app.event('app_home_opened', async ({ event, client }) => {
         blocks: [
           {
             type: 'section',
-            text: { type: 'mrkdwn', text: '*QA Bot*\nCreate and update tasks in Notion via Slack' },
+            text: { type: 'mrkdwn', text: '*QA Bot*\nCreate, update, and report tasks in Notion via Slack' },
           },
           {
             type: 'actions',
@@ -719,6 +1039,11 @@ app.event('app_home_opened', async ({ event, client }) => {
                 type: 'button',
                 text: { type: 'plain_text', text: '🔄 Update Task' },
                 action_id: 'open_update_modal',
+              },
+              {
+                type: 'button',
+                text: { type: 'plain_text', text: '📊 Report Task' },
+                action_id: 'open_report_modal',
               },
             ],
           },
@@ -751,6 +1076,18 @@ app.action('open_update_modal', async ({ ack, body, client }) => {
     await client.views.open({
       trigger_id: body.trigger_id,
       view: handleUpdateTaskModal(),
+    });
+  } catch (error) {
+    console.error('Error opening modal:', error);
+  }
+});
+
+app.action('open_report_modal', async ({ ack, body, client }) => {
+  await ack();
+  try {
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: handleReportTaskModal(),
     });
   } catch (error) {
     console.error('Error opening modal:', error);

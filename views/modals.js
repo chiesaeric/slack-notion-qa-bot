@@ -56,7 +56,7 @@ function handleCreateTaskModal() {
 }
 
 /**
- * Initial modal - asks for Notion page link (Update Task)
+ * Initial modal - asks for Notion page link and environment (Update Task)
  */
 function handleUpdateTaskModal() {
   return {
@@ -108,7 +108,78 @@ function handleUpdateTaskModal() {
   };
 }
 
+/**
+ * Initial modal - asks for Notion page link and environment (Report Task)
+ */
+function handleReportTaskModal() {
+  return {
+    type: 'modal',
+    callback_id: 'report_task_modal',
+    title: {
+      type: 'plain_text',
+      text: 'Report QA Task',
+      emoji: true,
+    },
+    submit: {
+      type: 'plain_text',
+      text: 'Next',
+      emoji: true,
+    },
+    close: {
+      type: 'plain_text',
+      text: 'Cancel',
+      emoji: true,
+    },
+    blocks: [
+      {
+        type: 'input',
+        block_id: 'notion_link_block',
+        element: {
+          type: 'plain_text_input',
+          action_id: 'notion_link_input',
+          placeholder: {
+            type: 'plain_text',
+            text: 'Paste Notion page link here...',
+          },
+        },
+        label: {
+          type: 'plain_text',
+          text: 'Notion Page Link',
+          emoji: true,
+        },
+      },
+      {
+        type: 'input',
+        block_id: 'env_block',
+        element: {
+          type: 'plain_text_input',
+          action_id: 'env_input',
+          placeholder: {
+            type: 'plain_text',
+            text: 'e.g., staging, production, dev',
+          },
+        },
+        label: {
+          type: 'plain_text',
+          text: 'Environment',
+          emoji: true,
+        },
+      },
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: 'Paste a Notion page link and enter the environment to fetch test coverage data.',
+          },
+        ],
+      },
+    ],
+  };
+}
+
 module.exports = {
   handleCreateTaskModal,
   handleUpdateTaskModal,
+  handleReportTaskModal,
 };
