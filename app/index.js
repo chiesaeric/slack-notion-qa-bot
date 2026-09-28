@@ -424,31 +424,8 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
       threadLink: threadLink || context?.threadLink || '',
     });
 
-    // Success modal - update view to show success
-    await ack({
-      response_action: 'update',
-      view: {
-        type: 'modal',
-        title: { type: 'plain_text', text: '✅ Task Created', emoji: true },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `✅ *Task successfully created!*\n\n> *Name:* ${taskName}\n> *Priority:* ${priorityEmoji} ${priority}${assignee ? `\n> *Assignee:* ${assignee}` : ''}${dueDate ? `\n> *Due Date:* ${dueDate}` : ''}`,
-            },
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `🔗 *Notion Page:* <${notionResult.url}|Open in Notion>`,
-            },
-          },
-        ],
-        close: { type: 'plain_text', text: 'Close', emoji: true },
-      },
-    });
+    // Clear all views - modal will close
+    await ack({});
 
     // Reply to thread with Notion link
     if (channelId && threadTs) {
