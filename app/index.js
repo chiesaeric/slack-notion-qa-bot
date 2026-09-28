@@ -671,6 +671,15 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
   // ============================================
   // Branch: In Staging / In Pre-staging (Report)
   // ============================================
+  console.log('=== Modal 3 Debug (Report) ===');
+  console.log('context:', JSON.stringify(context));
+  console.log('status:', status);
+  console.log('channelId:', channelId);
+  console.log('threadTs:', threadTs);
+  console.log('sheetName:', sheetName);
+  console.log('coverageData:', coverageData);
+  console.log('================================');
+
   const notes = values.notes_block?.notes_input?.value || '';
   const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
   const coverageData = context?.coverageData || {};
