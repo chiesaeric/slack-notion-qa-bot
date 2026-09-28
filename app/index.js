@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { App } = require('@slack/bolt');
-const { handleCreateTaskModal } = require('../views/modals');
-const { createNotionTask } = require('../utils/notion');
+const { handleCreateTaskModal, handleUpdateTaskModal } = require('../views/modals');
+const { createNotionTask, updateNotionTaskStatus, getThreadLinkFromPage, getPageInfo, parseNotionPageUrl } = require('../utils/notion');
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -14,7 +14,7 @@ const app = new App({
 const userToken = process.env.SLACK_USER_TOKEN;
 
 // Store context per user for thread reply
-// Key: user_id, Value: { channelId, threadTs, threadLink }
+// Key: user_id, Value: { channelId, threadTs, threadLink, notionPageId }
 const modalContext = new Map();
 
 // ============================================
@@ -25,11 +25,9 @@ function extractDataFromThread(messages) {
   let dueDate = '';
   let description = '';
   
-  // Combine all message texts (exclude bot's own messages)
   const userMessages = messages.filter(m => !m.bot_id);
   const fullText = userMessages.map(m => m.text || '').join('\n');
   
-  // Pattern untuk project name
   const projectPatterns = [
     /project[:\s]+([^\n,]+)/i,
     /nama\s*project[:\s]+([^\n,]+)/i,
@@ -44,7 +42,6 @@ function extractDataFromThread(messages) {
     }
   }
   
-  // Pattern untuk due date
   const dueDatePatterns = [
     /due\s*date[:\s]+(\d{4}-\d{2}-\d{2})/i,
     /due[:\s]+(\d{4}-\d{2}-\d{2})/i,
@@ -68,7 +65,6 @@ function extractDataFromThread(messages) {
     }
   }
   
-  // Description: use full text or first part
   if (userMessages.length > 0) {
     const firstMsg = userMessages[0].text || '';
     description = firstMsg;
@@ -104,11 +100,11 @@ function parseThreadLink(threadLink) {
 app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
   await ack();
 
-  // Store context for this user
   modalContext.set(command.user_id, {
     channelId: command.channel_id,
     threadTs: '',
     threadLink: '',
+    notionPageId: '',
   });
 
   try {
@@ -122,21 +118,42 @@ app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
 });
 
 // ============================================
-// VIEW SUBMISSION - Parse thread link and update modal
+// SLASH COMMAND: /qa-bot-update-task
+// ============================================
+app.command('/qa-bot-update-task', async ({ command, ack, client }) => {
+  await ack();
+
+  modalContext.set(command.user_id, {
+    channelId: command.channel_id,
+    threadTs: '',
+    notionPageId: '',
+  });
+
+  try {
+    await client.views.open({
+      trigger_id: command.trigger_id,
+      view: handleUpdateTaskModal(),
+    });
+  } catch (error) {
+    console.error('Error opening modal:', error);
+  }
+});
+
+// ============================================
+// VIEW SUBMISSION - Create Task: Parse thread link
 // ============================================
 app.view('create_task_modal', async ({ ack, body, client }) => {
   const values = body.view.state.values;
   
   const threadLink = values.thread_link_block?.thread_link_input?.value || '';
 
-  // Store context for this modal using user_id
   modalContext.set(body.user.id, {
     channelId: body.container?.channel_id || '',
     threadTs: body.container?.thread_ts || body.container?.message_ts || '',
     threadLink: threadLink,
+    notionPageId: '',
   });
 
-  // If no thread link, just show form
   if (!threadLink) {
     await ack({
       response_action: 'update',
@@ -233,7 +250,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
     return;
   }
 
-  // Parse thread link
   const parsed = parseThreadLink(threadLink);
   
   if (!parsed) {
@@ -258,7 +274,6 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   }
 
   try {
-    // Use bot token for fetching thread
     const threadReplies = await client.conversations.replies(
       { channel: parsed.channelId, ts: parsed.threadTs, limit: 50 }
     );
@@ -266,14 +281,13 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
     const messages = threadReplies.messages || [];
     const { projectName, dueDate, description } = extractDataFromThread(messages);
 
-    // Store parsed thread context
     modalContext.set(body.user.id, {
       channelId: parsed.channelId,
       threadTs: parsed.threadTs,
       threadLink: threadLink,
+      notionPageId: '',
     });
 
-    // Push new view with auto-filled data
     await ack({
       response_action: 'push',
       view: {
@@ -393,6 +407,161 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
 });
 
 // ============================================
+// VIEW SUBMISSION - Update Task: Parse Notion link
+// ============================================
+app.view('update_task_modal', async ({ ack, body, client }) => {
+  const values = body.view.state.values;
+  
+  const notionLink = values.notion_link_block?.notion_link_input?.value || '';
+
+  modalContext.set(body.user.id, {
+    channelId: body.container?.channel_id || '',
+    threadTs: body.container?.thread_ts || body.container?.message_ts || '',
+    notionPageId: '',
+    notionLink: notionLink,
+  });
+
+  if (!notionLink) {
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Error', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Please enter a Notion page link*`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+    return;
+  }
+
+  const pageId = parseNotionPageUrl(notionLink);
+  
+  if (!pageId) {
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Invalid Notion Link', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Invalid Notion page link format*\n\nPlease use a valid Notion page URL:\n\`https://notion.so/.../PageName-pageId\``,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+    return;
+  }
+
+  try {
+    // Get page info and thread link
+    const [pageInfo, threadLink] = await Promise.all([
+      getPageInfo(pageId),
+      getThreadLinkFromPage(pageId),
+    ]);
+
+    modalContext.set(body.user.id, {
+      channelId: body.container?.channel_id || '',
+      threadTs: body.container?.thread_ts || body.container?.message_ts || '',
+      notionPageId: pageId,
+      notionLink: notionLink,
+      threadLink: threadLink || '',
+    });
+
+    await ack({
+      response_action: 'push',
+      view: {
+        type: 'modal',
+        callback_id: 'update_task_modal_final',
+        title: { type: 'plain_text', text: 'Update Task', emoji: true },
+        blocks: [
+          {
+            type: 'input',
+            block_id: 'notion_link_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'notion_link_input',
+              initial_value: notionLink,
+            },
+            label: { type: 'plain_text', text: 'Notion Link', emoji: true },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%`,
+            },
+          },
+          {
+            type: 'divider',
+          },
+          {
+            type: 'input',
+            block_id: 'status_block',
+            element: {
+              type: 'static_select',
+              action_id: 'status_input',
+              placeholder: { type: 'plain_text', text: 'Select status' },
+              options: [
+                { text: { type: 'plain_text', text: '⭕ Not Started', emoji: true }, value: 'Not Started' },
+                { text: { type: 'plain_text', text: '🔄 In Progress', emoji: true }, value: 'In Progress' },
+                { text: { type: 'plain_text', text: '✅ Done', emoji: true }, value: 'Done' },
+              ],
+            },
+            label: { type: 'plain_text', text: 'Status *', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'progress_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'progress_input',
+              placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' },
+            },
+            label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
+            optional: true,
+          },
+        ],
+        submit: { type: 'plain_text', text: 'Update', emoji: true },
+        close: { type: 'plain_text', text: 'Cancel', emoji: true },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching Notion page:', error);
+    
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Error', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Could not fetch Notion page*\n\nError: ${error.message}`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+  }
+});
+
+// ============================================
 // FINAL MODAL SUBMISSION - Create Notion Task
 // ============================================
 app.view('create_task_modal_final', async ({ ack, body, client }) => {
@@ -406,7 +575,6 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
   const threadLink = values.thread_link_block?.thread_link_input?.value || '';
 
-  // Retrieve stored context
   const context = modalContext.get(body.user.id);
   const channelId = context?.channelId;
   const threadTs = context?.threadTs;
@@ -424,10 +592,8 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
       threadLink: threadLink || context?.threadLink || '',
     });
 
-    // Clear all modals from stack
     await ack({ response_action: 'clear' });
 
-    // Reply to thread with Notion link
     if (channelId && threadTs) {
       await client.chat.postMessage({
         channel: channelId,
@@ -460,6 +626,68 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
 });
 
 // ============================================
+// FINAL MODAL SUBMISSION - Update Notion Task
+// ============================================
+app.view('update_task_modal_final', async ({ ack, body, client }) => {
+  const values = body.view.state.values;
+  
+  const status = values.status_block?.status_input?.selected_option?.value || '';
+  const progress = values.progress_block?.progress_input?.value || '';
+
+  const context = modalContext.get(body.user.id);
+  const channelId = context?.channelId;
+  const threadTs = context?.threadTs;
+  const notionPageId = context?.notionPageId;
+  const threadLink = context?.threadLink;
+  const notionLink = context?.notionLink;
+
+  const statusEmoji = status === 'Done' ? '✅' : status === 'In Progress' ? '🔄' : '⭕';
+
+  try {
+    await updateNotionTaskStatus(notionPageId, status, progress ? parseInt(progress, 10) : null);
+
+    await ack({ response_action: 'clear' });
+
+    // Reply to thread (get thread link from Notion comment)
+    if (channelId && threadTs && threadLink) {
+      await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `🔄 *Task Updated!*\n\n> *Status:* ${statusEmoji} ${status}\n> *Progress:* ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
+      });
+    } else if (channelId && threadTs) {
+      // If no thread link found, still notify
+      await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `🔄 *Task Updated!*\n\n> *Status:* ${statusEmoji} ${status}\n> *Progress:* ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
+      });
+    }
+
+  } catch (error) {
+    console.error('Error updating task:', error);
+
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Error', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Failed to update task*\n\n> Error: ${error.message}`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+  }
+});
+
+// ============================================
 // HOME TAB
 // ============================================
 app.event('app_home_opened', async ({ event, client }) => {
@@ -471,15 +699,20 @@ app.event('app_home_opened', async ({ event, client }) => {
         blocks: [
           {
             type: 'section',
-            text: { type: 'mrkdwn', text: '*QA Bot*\nCreate tasks in Notion via Slack' },
+            text: { type: 'mrkdwn', text: '*QA Bot*\nCreate and update tasks in Notion via Slack' },
           },
           {
             type: 'actions',
             elements: [
               {
                 type: 'button',
-                text: { type: 'plain_text', text: 'Create Task' },
+                text: { type: 'plain_text', text: '➕ Create Task' },
                 action_id: 'open_create_modal',
+              },
+              {
+                type: 'button',
+                text: { type: 'plain_text', text: '🔄 Update Task' },
+                action_id: 'open_update_modal',
               },
             ],
           },
@@ -492,7 +725,7 @@ app.event('app_home_opened', async ({ event, client }) => {
 });
 
 // ============================================
-// ACTION HANDLER (for home tab button)
+// ACTION HANDLERS
 // ============================================
 app.action('open_create_modal', async ({ ack, body, client }) => {
   await ack();
@@ -500,6 +733,18 @@ app.action('open_create_modal', async ({ ack, body, client }) => {
     await client.views.open({
       trigger_id: body.trigger_id,
       view: handleCreateTaskModal(),
+    });
+  } catch (error) {
+    console.error('Error opening modal:', error);
+  }
+});
+
+app.action('open_update_modal', async ({ ack, body, client }) => {
+  await ack();
+  try {
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: handleUpdateTaskModal(),
     });
   } catch (error) {
     console.error('Error opening modal:', error);

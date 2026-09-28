@@ -1,6 +1,6 @@
 /**
  * Notion API Integration
- * Handles creation of tasks in Notion Database
+ * Handles creation and updates of tasks in Notion Database
  */
 
 const { Client } = require('@notionhq/client');
@@ -11,62 +11,35 @@ const notion = new Client({
 
 const DATABASE_ID = process.env.NOTION_DATABASE_ID;
 
-/**
- * Create a new task in Notion Database
- * @param {Object} taskData - Task data from modal submission
- * @returns {Promise<Object>} Created page result with URL
- */
+// ============================================
+// CREATE TASK
+// ============================================
 async function createNotionTask(taskData) {
   const { taskName, description, priority, dueDate, assignee, labels, threadLink } = taskData;
 
-  // Build Notion page properties based on your database schema
   const properties = {
     Name: {
-      title: [
-        {
-          text: {
-            content: taskName,
-          },
-        },
-      ],
+      title: [{ text: { content: taskName } }],
     },
   };
 
   if (description) {
     properties.Description = {
-      rich_text: [
-        {
-          text: {
-            content: description,
-          },
-        },
-      ],
+      rich_text: [{ text: { content: description } }],
     };
   }
 
   properties.Priority = {
-    select: {
-      name: priority || 'Medium',
-    },
+    select: { name: priority || 'Medium' },
   };
 
   if (dueDate) {
-    properties['Due Date'] = {
-      date: {
-        start: dueDate,
-      },
-    };
+    properties['Due Date'] = { date: { start: dueDate } };
   }
 
   if (assignee) {
     properties.Assignee = {
-      rich_text: [
-        {
-          text: {
-            content: assignee,
-          },
-        },
-      ],
+      rich_text: [{ text: { content: assignee } }],
     };
   }
 
@@ -76,34 +49,22 @@ async function createNotionTask(taskData) {
     };
   }
 
-  // Create the page in Notion
   const response = await notion.pages.create({
-    parent: {
-      database_id: DATABASE_ID,
-    },
+    parent: { database_id: DATABASE_ID },
     properties: properties,
   });
 
-  // Add thread link as a comment if provided
+  // Add thread link as comment
   if (threadLink) {
     try {
       await notion.comments.create({
         parent: { page_id: response.id },
         rich_text: [
+          { type: 'text', text: { content: 'Link Request: ' } },
           {
             type: 'text',
-            text: {
-              content: 'Link Request: ',
-            },
-          },
-          {
-            type: 'text',
-            link: {
-              url: threadLink,
-            },
-            text: {
-              content: threadLink,
-            },
+            link: { url: threadLink },
+            text: { content: threadLink },
           },
         ],
       });
@@ -119,6 +80,101 @@ async function createNotionTask(taskData) {
   };
 }
 
+// ============================================
+// GET THREAD LINK FROM NOTION PAGE
+// ============================================
+async function getThreadLinkFromPage(pageId) {
+  try {
+    const comments = await notion.comments.list({ block_id: pageId });
+    
+    for (const comment of comments.results) {
+      const textContent = comment.rich_text
+        .map(block => block.plain_text)
+        .join('');
+      
+      // Look for Slack URL pattern
+      const slackMatch = textContent.match(/https:\/\/[\w.-]+\.slack\.com\/archives\/[\w]+\/p[\w]+/);
+      if (slackMatch) {
+        return slackMatch[0];
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting thread link:', error);
+    return null;
+  }
+}
+
+// ============================================
+// UPDATE TASK STATUS AND PROGRESS
+// ============================================
+async function updateNotionTaskStatus(pageId, status, progress) {
+  const properties = {};
+
+  // Update Status (select property)
+  if (status) {
+    properties.Status = { select: { name: status } };
+  }
+
+  // Update Progress (number property)
+  if (progress !== undefined && progress !== null) {
+    properties.Progress = { number: parseInt(progress, 10) };
+  }
+
+  const response = await notion.pages.update({
+    page_id: pageId,
+    properties: properties,
+  });
+
+  return {
+    id: response.id,
+    url: response.url,
+  };
+}
+
+// ============================================
+// GET PAGE INFO
+// ============================================
+async function getPageInfo(pageId) {
+  const page = await notion.pages.retrieve({ page_id: pageId });
+  
+  // Extract properties
+  const props = page.properties;
+  
+  return {
+    id: page.id,
+    url: page.url,
+    name: props.Name?.title?.[0]?.plain_text || '',
+    status: props.Status?.select?.name || '',
+    progress: props.Progress?.number || 0,
+  };
+}
+
+// ============================================
+// HELPER: Parse Notion page URL to get page ID
+// ============================================
+function parseNotionPageUrl(pageUrl) {
+  // Format: https://notion.so/workspace/PageName-pageId
+  // Or: https://www.notion.so/workspace/PageName-pageId?v=...
+  
+  const patterns = [
+    /notion\.so\/[\w-]+\/([a-f0-9]{32})/i,
+    /([a-f0-9]{32})\?/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = pageUrl.match(pattern);
+    if (match) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
 module.exports = {
   createNotionTask,
+  getThreadLinkFromPage,
+  updateNotionTaskStatus,
+  getPageInfo,
+  parseNotionPageUrl,
 };

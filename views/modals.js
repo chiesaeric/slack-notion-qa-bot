@@ -1,9 +1,9 @@
 /**
- * Modal View Definitions for QA Task Creation
+ * Modal View Definitions for QA Task Creation and Update
  */
 
 /**
- * Initial modal - asks for thread link only
+ * Initial modal - asks for thread link only (Create Task)
  */
 function handleCreateTaskModal() {
   return {
@@ -25,9 +25,6 @@ function handleCreateTaskModal() {
       emoji: true,
     },
     blocks: [
-      // ========================================
-      // THREAD LINK
-      // ========================================
       {
         type: 'input',
         block_id: 'thread_link_block',
@@ -45,9 +42,6 @@ function handleCreateTaskModal() {
           emoji: true,
         },
       },
-      // ========================================
-      // HINT
-      // ========================================
       {
         type: 'context',
         elements: [
@@ -61,6 +55,60 @@ function handleCreateTaskModal() {
   };
 }
 
+/**
+ * Initial modal - asks for Notion page link (Update Task)
+ */
+function handleUpdateTaskModal() {
+  return {
+    type: 'modal',
+    callback_id: 'update_task_modal',
+    title: {
+      type: 'plain_text',
+      text: 'Update QA Task',
+      emoji: true,
+    },
+    submit: {
+      type: 'plain_text',
+      text: 'Next',
+      emoji: true,
+    },
+    close: {
+      type: 'plain_text',
+      text: 'Cancel',
+      emoji: true,
+    },
+    blocks: [
+      {
+        type: 'input',
+        block_id: 'notion_link_block',
+        element: {
+          type: 'plain_text_input',
+          action_id: 'notion_link_input',
+          placeholder: {
+            type: 'plain_text',
+            text: 'Paste Notion page link here...',
+          },
+        },
+        label: {
+          type: 'plain_text',
+          text: 'Notion Page Link',
+          emoji: true,
+        },
+      },
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: 'Paste a Notion page link to update its status and progress.',
+          },
+        ],
+      },
+    ],
+  };
+}
+
 module.exports = {
   handleCreateTaskModal,
+  handleUpdateTaskModal,
 };
