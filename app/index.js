@@ -244,13 +244,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
 
     console.log('Building Modal 2 view...');
 
-    // Check if task has test case
-    const hasTestCase = !!pageInfo.testCaseUrl;
-    const testCaseInfo = hasTestCase
-      ? `> *Test Case:* Ada\n> *Sheet Name:* Wajib diisi untuk auto-fetch`
-      : `> *Test Case:* Tidak ada\n> *Sheet Name:* Opsional (untuk input manual)`;
-
-    // Modal 2 view with task info
+    // Modal 2 view - simple version
     await ack({
       response_action: 'push',
       view: {
@@ -272,7 +266,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%\n${testCaseInfo}`,
+              text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%`,
             },
           },
           { type: 'divider' },
