@@ -429,33 +429,10 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
             label: { type: 'plain_text', text: 'Environment / Sheet Name *', emoji: true },
           },
           {
-            type: 'input',
-            block_id: 'notes_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'notes_input',
-              placeholder: { type: 'plain_text', text: 'Enter any additional notes...' },
-              multiline: true,
-            },
-            label: { type: 'plain_text', text: 'Notes', emoji: true },
-            optional: true,
-          },
-          {
-            type: 'input',
-            block_id: 'cc_block',
-            element: {
-              type: 'multi_conversations_select',
-              action_id: 'cc_input',
-              placeholder: { type: 'plain_text', text: 'Select people to notify...' },
-            },
-            label: { type: 'plain_text', text: 'CC (Slack mentions)', emoji: true },
-            optional: true,
-          },
-          {
             type: 'context',
             elements: [
               {
-                type: 'mrkdown',
+                type: 'mrkdwn',
                 text: 'Enter the sheet/environment name to fetch coverage data.',
               },
             ],
@@ -523,8 +500,6 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
 
   const testCaseUrl = values.testcase_block?.testcase_input?.value || '';
   const env = values.env_block?.env_input?.value || '';
-  const notes = values.notes_block?.notes_input?.value || '';
-  const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
   const progress = values.progress_block?.progress_input?.value || '';
 
   const context = modalContext.get(body.user.id);
@@ -752,10 +727,7 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
 
-    // Format CC users
-    const ccFormatted = ccUsers.length > 0 ? ccUsers.map(u => `<@${u}>`).join(' ') : '';
-
-    let reportMsg = `*[Testing Report] ${taskName}*
+    const reportMsg = `*[Testing Report] ${taskName}*
 > Date: ${today}
 > Env: ${env}
 
@@ -765,14 +737,6 @@ Test Cases: ${testcasesFormatted}
 Passed Test: ${coverageData.totalPassed || 0} cases
 Failed Test: ${coverageData.totalFailed || 0} cases
 Untested Test: ${coverageData.totalNotTested || 0} cases`;
-
-    if (notes) {
-      reportMsg += `\n\n*Notes:*\n${notes}`;
-    }
-
-    if (ccFormatted) {
-      reportMsg += `\n\ncc: ${ccFormatted}`;
-    }
 
     // Determine where to post
     let replyChannelId = channelId;
