@@ -272,10 +272,9 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
     console.log('parsed.channelId:', parsed.channelId);
     console.log('parsed.threadTs:', parsed.threadTs);
     
-    // Fetch thread messages
+    // Use bot token for fetching thread (it has channels:history if bot is in channel)
     const threadReplies = await client.conversations.replies(
-      { channel: parsed.channelId, ts: parsed.threadTs, limit: 50 },
-      { token: userToken }
+      { channel: parsed.channelId, ts: parsed.threadTs, limit: 50 }
     );
 
     const messages = threadReplies.messages || [];
