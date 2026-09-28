@@ -275,8 +275,11 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
   });
 
   console.log('Pushing Modal 2...');
+  console.log('pageInfo.status:', pageInfo.status);
+  console.log('pageInfo.progress:', pageInfo.progress);
+  console.log('pageInfo.name:', pageInfo.name);
 
-  // Modal 2: status/progress/testcase + action buttons to branch
+  // Ack immediately - don't wait for background fetch
   await ack({
     response_action: 'push',
     view: {
@@ -337,23 +340,28 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
             optional: true,
           },
-          {
-            type: 'context',
-            elements: [
-              {
-                type: 'mrkdwn',
-                text: '*Required for In Staging or In Prestaging*',
-              },
-            ],
-          },
-          {
-            type: 'divider',
-          },
+          { type: 'divider' },
         ],
         submit: { type: 'plain_text', text: 'Next', emoji: true },
         close: { type: 'plain_text', text: 'Cancel', emoji: true },
       },
     });
+
+  // Background: store thread info after push
+  // Update context with full data
+  modalContext.set(body.user.id, {
+    channelId: body.container?.channel_id || '',
+    threadTs: body.container?.thread_ts || body.container?.message_ts || '',
+    notionPageId: pageId,
+    notionLink: notionLink,
+    threadLink: notionThreadLink || '',
+    notionThreadLink: notionThreadLink,
+    testCaseUrl: pageInfo.testCaseUrl || '',
+    hasTestCase: !!pageInfo.testCaseUrl,
+    status: pageInfo.status || '',
+    progress: pageInfo.progress || 0,
+    taskName: pageInfo.name || 'N/A',
+  });
 });
 
 // ============================================
