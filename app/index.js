@@ -1024,8 +1024,7 @@ Testcases: ${testcaseLine}
 Passed Test: ${coverageFormatted}%
 Failed Test: ${failed} cases
 Untested Test: ${untested} cases
-Notes: ${notes || '-'}
-cc: ${ccFormatted}`;
+Notes: ${notes || '-'}`;
 
     await notion.comments.create({
       parent: { page_id: notionPageId },
