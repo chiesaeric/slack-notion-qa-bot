@@ -256,6 +256,8 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
   }
 
   const notionThreadLink = pageInfo.slackThread || '';
+  console.log('threadLink:', threadLink);
+  console.log('notionThreadLink:', notionThreadLink);
 
   // Update context with full data
   modalContext.set(body.user.id, {
@@ -271,6 +273,8 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
     progress: pageInfo.progress || 0,
     taskName: pageInfo.name || 'N/A',
   });
+
+  console.log('Pushing Modal 2...');
 
   // Modal 2: status/progress/testcase + action buttons to branch
   await ack({
