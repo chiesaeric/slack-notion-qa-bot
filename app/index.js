@@ -403,6 +403,17 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
 
   // Retrieve stored context
+  console.log('=== DEBUG ===');
+  console.log('body.trigger_id:', body.trigger_id);
+  console.log('modalContext keys:', [...modalContext.keys()]);
+  console.log('stored context:', modalContext.get(body.trigger_id));
+  console.log('body.container:', JSON.stringify({
+    channel_id: body.container?.channel_id,
+    thread_ts: body.container?.thread_ts,
+    message_ts: body.container?.message_ts
+  }));
+  console.log('=============');
+
   const context = modalContext.get(body.trigger_id);
   const channelId = context?.channelId;
   const threadTs = context?.threadTs;
