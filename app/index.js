@@ -277,6 +277,10 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
               type: 'static_select',
               action_id: 'status_input',
               placeholder: { type: 'plain_text', text: 'Select status' },
+              initial_option: pageInfo.status ? {
+                text: { type: 'plain_text', text: pageInfo.status },
+                value: pageInfo.status,
+              } : undefined,
               options: [
                 { text: { type: 'plain_text', text: 'Not Started' }, value: 'Not Started' },
                 { text: { type: 'plain_text', text: 'Created Test Plan' }, value: 'Created Test Plan' },
