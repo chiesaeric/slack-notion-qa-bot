@@ -628,20 +628,20 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
   }
 
   try {
-    // Parse spreadsheet ID and fetch coverage data
+    // Parse spreadsheet ID
     const spreadsheetId = parseSpreadsheetUrl(testCaseUrl);
     if (!spreadsheetId) {
       await ack({
         response_action: 'update',
         view: {
           type: 'modal',
-          title: { type: 'plain_text', text: '❌ Error', emoji: true },
+          title: { type: 'plain_text', text: '❌ Invalid URL', emoji: true },
           blocks: [
             {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: '❌ *Invalid Test Case URL*',
+                text: '❌ *Invalid Test Case URL*\n\nPlease provide a valid Google Sheets URL.',
               },
             },
           ],
@@ -651,8 +651,36 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
       return;
     }
 
-    // Fetch coverage data
-    const coverageData = await fetchTestCoverageData(spreadsheetId, env);
+    // Fetch coverage data with timeout
+    let coverageData;
+    try {
+      coverageData = await Promise.race([
+        fetchTestCoverageData(spreadsheetId, env),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Request timeout')), 8000)
+        ),
+      ]);
+    } catch (apiError) {
+      console.error('Google Sheets API error:', apiError.message);
+      await ack({
+        response_action: 'update',
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: '❌ Connection Error', emoji: true },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `❌ *Could not fetch coverage data*\n\nError: ${apiError.message}\n\nPlease check:\n1. The Google Sheet is shared with the service account\n2. The sheet name "${env}" exists\n3. Try again in a moment`,
+              },
+            },
+          ],
+          close: { type: 'plain_text', text: 'Close', emoji: true },
+        },
+      });
+      return;
+    }
 
     // Store in context
     modalContext.set(body.user.id, {
