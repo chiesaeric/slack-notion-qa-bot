@@ -856,17 +856,6 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
           },
           {
             type: 'input',
-            block_id: 'testcases_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'testcases_input',
-              placeholder: { type: 'plain_text', text: 'e.g., 78' },
-              initial_value: coverageData.scopeTest || '',
-            },
-            label: { type: 'plain_text', text: 'Testcases (count)', emoji: true },
-          },
-          {
-            type: 'input',
             block_id: 'testcase_link_block',
             element: {
               type: 'plain_text_input',
@@ -876,6 +865,17 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             },
             label: { type: 'plain_text', text: 'Test Case Link', emoji: true },
             optional: true,
+          },
+          {
+            type: 'input',
+            block_id: 'testcases_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'testcases_input',
+              placeholder: { type: 'plain_text', text: 'e.g., 78' },
+              initial_value: coverageData.scopeTest || '',
+            },
+            label: { type: 'plain_text', text: 'Testcases (count)', emoji: true },
           },
           {
             type: 'input',
@@ -941,7 +941,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
               action_id: 'cc_input',
               placeholder: { type: 'plain_text', text: 'e.g., @john, @jane' },
             },
-            label: { type: 'plain_text', text: 'CC (people to notify)', emoji: true },
+            label: { type: 'plain_text', text: 'CC (Slack mentions)', emoji: true },
             optional: true,
           },
         ],
@@ -1000,14 +1000,17 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
   // Format coverage to 2 decimal places
   const coverageFormatted = parseFloat(coverage).toFixed(2);
 
+  // Format testcases with "cases" prefix
+  const testcasesFormatted = `${testcases} cases`;
+
   try {
     // Add report as comment in Notion
     const { Client } = require('@notionhq/client');
     const notion = new Client({ auth: process.env.NOTION_API_KEY });
     
     const testcaseLine = testcaseLink 
-      ? `<${testcaseLink}|Testcases: ${testcases}>` 
-      : `Testcases: ${testcases}`;
+      ? `<${testcaseLink}|${testcasesFormatted}>` 
+      : `${testcasesFormatted}`;
     
     const reportTitle = `[Testing Report] ${taskName}`;
     
@@ -1015,11 +1018,12 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
 Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
 Env: ${env}
 
-Testcases: ${testcases} (${testcaseLink ? `<${testcaseLink}|link>` : 'link'})
+*Total Coverage Test:* ${coverageFormatted}%
+
+Testcases: ${testcaseLine}
  Passed Test: ${coverageFormatted}%
 Failed Test: ${failed} cases
 Untested Test: ${untested} cases
-*Total Coverage Test:* ${coverageFormatted}%
 
 *Notes:*
 ${notes || ' '}
@@ -1050,22 +1054,26 @@ cc: ${cc || ' '}`;
       }
     }
 
-    // Build report message - blockquote format with Date and Env
+    // Format CC mentions for Slack
+    const ccLine = cc ? cc.split(',').map(c => c.trim()).filter(Boolean).map(c => `<@${c.replace('@', '')}>`).join(' ') : '';
+
+    // Build report message
     const testcaseLineFormatted = testcaseLink 
-      ? `Testcases: ${testcases} (<${testcaseLink}|link>)` 
-      : `Testcases: ${testcases}`;
+      ? `${testcasesFormatted} (<${testcaseLink}|link>)` 
+      : `${testcasesFormatted}`;
     
     let reportText = `*[Testing Report] ${taskName}*\n`;
     reportText += `> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n`;
     reportText += `> Env: ${env}\n\n`;
-    reportText += `${testcaseLineFormatted}\n`;
+    reportText += `*Total Coverage Test:* ${coverageFormatted}%\n\n`;
+    reportText += `Testcases: ${testcaseLineFormatted}\n`;
     reportText += ` Passed Test: ${coverageFormatted}%\n`;
     reportText += `Failed Test: ${failed} cases\n`;
-    reportText += `Untested Test: ${untested} cases\n`;
-    reportText += `*Total Coverage Test:* ${coverageFormatted}%\n\n`;
+    reportText += `Untested Test: ${untested} cases\n\n`;
     reportText += `*Notes:*\n${notes || ' '}\n\n`;
-    reportText += `cc: ${cc || ' '}`;
-
+    if (ccLine) {
+      reportText += `cc: ${ccLine}`;
+    }
     // Reply to thread if we have channel and thread_ts
     if (replyChannelId && replyThreadTs) {
       await client.chat.postMessage({
