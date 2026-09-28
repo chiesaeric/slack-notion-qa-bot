@@ -14,7 +14,7 @@ const app = new App({
 const userToken = process.env.SLACK_USER_TOKEN;
 
 // Store context per user for thread reply
-// Key: trigger_id, Value: { channelId, threadTs }
+// Key: user_id, Value: { channelId, threadTs }
 const modalContext = new Map();
 
 // ============================================
@@ -109,8 +109,8 @@ function parseThreadLink(threadLink) {
 app.command('/qa-bot-create-task', async ({ command, ack, client }) => {
   await ack();
 
-  // Store context for this trigger
-  modalContext.set(command.trigger_id, {
+  // Store context for this user
+  modalContext.set(command.user_id, {
     channelId: command.channel_id,
     threadTs: command.message_ts,
   });
@@ -133,8 +133,8 @@ app.view('create_task_modal', async ({ ack, body, client }) => {
   
   const threadLink = values.thread_link_block?.thread_link_input?.value || '';
 
-  // Store context for this modal using trigger_id
-  modalContext.set(body.trigger_id, {
+  // Store context for this modal using user_id
+  modalContext.set(body.user.id, {
     channelId: body.container?.channel_id || '',
     threadTs: body.container?.thread_ts || body.container?.message_ts || '',
   });
@@ -402,11 +402,11 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
   const assignee = values.assignee_block?.assignee_input?.value || '';
   const labels = values.labels_block?.labels_input?.selected_conversations || [];
 
-  // Retrieve stored context
+  // Retrieve stored context using user.id
   console.log('=== DEBUG ===');
-  console.log('body.trigger_id:', body.trigger_id);
+  console.log('body.user.id:', body.user.id);
   console.log('modalContext keys:', [...modalContext.keys()]);
-  console.log('stored context:', modalContext.get(body.trigger_id));
+  console.log('stored context:', modalContext.get(body.user.id));
   console.log('body.container:', JSON.stringify({
     channel_id: body.container?.channel_id,
     thread_ts: body.container?.thread_ts,
@@ -414,7 +414,7 @@ app.view('create_task_modal_final', async ({ ack, body, client }) => {
   }));
   console.log('=============');
 
-  const context = modalContext.get(body.trigger_id);
+  const context = modalContext.get(body.user.id);
   const channelId = context?.channelId;
   const threadTs = context?.threadTs;
 
