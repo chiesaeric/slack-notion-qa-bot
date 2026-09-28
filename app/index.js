@@ -286,25 +286,13 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
           },
           {
             type: 'input',
-            block_id: 'progress_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'progress_input',
-              placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' },
-              initial_value: String(pageInfo.progress || '0'),
-            },
-            label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
-            optional: true,
-          },
-          {
-            type: 'input',
             block_id: 'sheet_block',
             element: {
               type: 'plain_text_input',
               action_id: 'sheet_input',
               placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
             },
-            label: { type: 'plain_text', text: 'Sheet Name (for Report)', emoji: true },
+            label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
             optional: true,
           },
           {
@@ -312,7 +300,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             elements: [
               {
                 type: 'mrkdwn',
-                text: '*Required if status is In Staging or In Pre-staging*',
+                text: '*Required for In Staging or In Pre-staging*',
               },
             ],
           },
@@ -320,7 +308,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             type: 'divider',
           },
         ],
-        submit: { type: 'plain_text', text: 'Update', emoji: true },
+        submit: { type: 'plain_text', text: 'Next', emoji: true },
         close: { type: 'plain_text', text: 'Cancel', emoji: true },
       },
     });
@@ -349,14 +337,12 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
 
 // ============================================
 // VIEW SUBMISSION - Modal 2 (Final): All fields
-// Branch: In Staging/Pre-staging → fetch coverage + reply report
-// Others → update + reply status
+// Branch: Created Test Plan → Modal 3 (Progress+TestCase) | In Staging/Pre-staging → Modal 3 (Coverage) | Ready to Release/Released → direct update
 // ============================================
 app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   const values = body.view.state.values;
 
   const status = values.status_block?.status_input?.selected_option?.value || '';
-  const progress = values.progress_block?.progress_input?.value || '';
   const sheetName = values.sheet_block?.sheet_input?.value || '';
 
   const context = modalContext.get(body.user.id);
@@ -367,16 +353,54 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   const threadTs = context?.threadTs;
   const taskName = context?.taskName || 'N/A';
   const testCaseUrl = context?.testCaseUrl || '';
+  const existingProgress = context?.progress || 0;
 
   // Store updated values
   modalContext.set(body.user.id, {
     ...context,
     updateStatus: status,
-    updateProgress: progress,
+    sheetName: sheetName,
   });
 
   // ============================================
+  // Branch: Ready to Release or Released
+  // Direct update + reply (skip Modal 3)
+  // ============================================
+  if (status === 'Ready to Release' || status === 'Released') {
+    try {
+      await updateNotionTaskStatus(notionPageId, status, 100);
+
+      await ack({ response_action: 'clear' });
+
+      // Reply to thread
+      if (channelId && threadTs) {
+        await client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: `✅ *Task Completed!*\n\n> Status: ${status}\n> Progress: 100%\n> 🔗 <${notionLink}|Open in Notion>`,
+        });
+      }
+    } catch (error) {
+      console.error('Error updating task:', error);
+      await ack({
+        response_action: 'update',
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: '❌ Error', emoji: true },
+          blocks: [{
+            type: 'section',
+            text: { type: 'mrkdwn', text: `❌ *Failed to update task*\n\nError: ${error.message}` },
+          }],
+          close: { type: 'plain_text', text: 'Close', emoji: true },
+        },
+      });
+    }
+    return;
+  }
+
+  // ============================================
   // Branch: In Staging or In Pre-staging
+  // Fetch coverage → Modal 3 (Coverage preview + Notes + CC)
   // ============================================
   if (status === 'In Staging' || status === 'In Pre-staging') {
     // Validate sheet name required
@@ -386,15 +410,10 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
         view: {
           type: 'modal',
           title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: '❌ *Sheet Name is required when status is In Staging or In Pre-staging*',
-              },
-            },
-          ],
+          blocks: [{
+            type: 'section',
+            text: { type: 'mrkdwn', text: '❌ *Sheet Name is required for In Staging or In Pre-staging*' },
+          }],
           close: { type: 'plain_text', text: 'Close', emoji: true },
         },
       });
@@ -408,15 +427,10 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
         view: {
           type: 'modal',
           title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: '❌ *Test Case URL is required for report*\n\nPlease update the Test Case URL in Notion first.',
-              },
-            },
-          ],
+          blocks: [{
+            type: 'section',
+            text: { type: 'mrkdwn', text: '❌ *Test Case URL is required*\n\nPlease update the Test Case URL in Notion first.' },
+          }],
           close: { type: 'plain_text', text: 'Close', emoji: true },
         },
       });
@@ -431,15 +445,10 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
         view: {
           type: 'modal',
           title: { type: 'plain_text', text: '❌ Invalid URL', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: '❌ *Invalid Test Case URL in Notion*',
-              },
-            },
-          ],
+          blocks: [{
+            type: 'section',
+            text: { type: 'mrkdwn', text: '❌ *Invalid Test Case URL in Notion*' },
+          }],
           close: { type: 'plain_text', text: 'Close', emoji: true },
         },
       });
@@ -450,9 +459,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
     try {
       coverageData = await Promise.race([
         fetchTestCoverageData(spreadsheetId, sheetName),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), 8000),
-        ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 8000)),
       ]);
     } catch (apiError) {
       await ack({
@@ -460,15 +467,10 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
         view: {
           type: 'modal',
           title: { type: 'plain_text', text: '❌ Connection Error', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `❌ *Could not fetch coverage data*\n\nError: ${apiError.message}\n\nMake sure the sheet name "${sheetName}" exists.`,
-              },
-            },
-          ],
+          blocks: [{
+            type: 'section',
+            text: { type: 'mrkdwn', text: `❌ *Could not fetch coverage data*\n\nError: ${apiError.message}` },
+          }],
           close: { type: 'plain_text', text: 'Close', emoji: true },
         },
       });
@@ -479,12 +481,11 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
     modalContext.set(body.user.id, {
       ...context,
       updateStatus: status,
-      updateProgress: progress,
       sheetName: sheetName,
       coverageData: coverageData,
     });
 
-    // Push Modal 3 with pre-filled coverage data
+    // Push Modal 3 with coverage preview + Notes + CC
     const coverageFormatted = parseFloat(coverageData.coverage || 0).toFixed(2);
     const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
 
@@ -497,44 +498,25 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
         blocks: [
           {
             type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `📋 *Task:* ${taskName}\n> Status: *${status}*`,
-            },
+            text: { type: 'mrkdwn', text: `📋 *Task:* ${taskName}\n> Status: *${status}*` },
           },
-          {
-            type: 'divider',
-          },
+          { type: 'divider' },
           {
             type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*[Testing Report]*\n> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n> Env: ${sheetName}\n\n> *Total Coverage Test:* ${coverageFormatted}%\n\nTest Cases: ${testcasesFormatted}\nPassed Test: ${coverageData.totalPassed || 0} cases\nFailed Test: ${coverageData.totalFailed || 0} cases\nUntested Test: ${coverageData.totalNotTested || 0} cases`,
-            },
+            text: { type: 'mrkdwn', text: `*[Testing Report]*\n> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n> Env: ${sheetName}\n\n> *Total Coverage Test:* ${coverageFormatted}%\n\nTest Cases: ${testcasesFormatted}\nPassed Test: ${coverageData.totalPassed || 0} cases\nFailed Test: ${coverageData.totalFailed || 0} cases\nUntested Test: ${coverageData.totalNotTested || 0} cases` },
           },
-          {
-            type: 'divider',
-          },
+          { type: 'divider' },
           {
             type: 'input',
             block_id: 'notes_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'notes_input',
-              placeholder: { type: 'plain_text', text: 'Enter any additional notes...' },
-              multiline: true,
-            },
+            element: { type: 'plain_text_input', action_id: 'notes_input', placeholder: { type: 'plain_text', text: 'Enter any additional notes...' }, multiline: true },
             label: { type: 'plain_text', text: 'Notes', emoji: true },
             optional: true,
           },
           {
             type: 'input',
             block_id: 'cc_block',
-            element: {
-              type: 'multi_conversations_select',
-              action_id: 'cc_input',
-              placeholder: { type: 'plain_text', text: 'Select people to notify...' },
-            },
+            element: { type: 'multi_conversations_select', action_id: 'cc_input', placeholder: { type: 'plain_text', text: 'Select people to notify...' } },
             label: { type: 'plain_text', text: 'CC (Slack mentions)', emoji: true },
             optional: true,
           },
@@ -548,29 +530,123 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
 
   // ============================================
   // Branch: Created Test Plan
+  // Push Modal 3 (Progress + Test Case URL)
   // ============================================
   if (status === 'Created Test Plan') {
+    modalContext.set(body.user.id, {
+      ...context,
+      updateStatus: status,
+      sheetName: sheetName,
+    });
+
+    await ack({
+      response_action: 'push',
+      view: {
+        type: 'modal',
+        callback_id: 'update_task_modal_step3',
+        title: { type: 'plain_text', text: 'Created Test Plan', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `📋 *Task:* ${taskName}\n> Status will be: *${status}*` },
+          },
+          { type: 'divider' },
+          {
+            type: 'input',
+            block_id: 'progress_block',
+            element: { type: 'plain_text_input', action_id: 'progress_input', placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' }, initial_value: String(existingProgress) },
+            label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
+          },
+          {
+            type: 'input',
+            block_id: 'testcase_block',
+            element: { type: 'plain_text_input', action_id: 'testcase_input', placeholder: { type: 'plain_text', text: 'Paste test case spreadsheet link here...' }, initial_value: testCaseUrl || '' },
+            label: { type: 'plain_text', text: 'Test Case URL', emoji: true },
+          },
+        ],
+        submit: { type: 'plain_text', text: 'Create', emoji: true },
+        close: { type: 'plain_text', text: 'Cancel', emoji: true },
+      },
+    });
+    return;
+  }
+
+  // ============================================
+  // Branch: Others (Not Started, etc.)
+  // Direct update + reply
+  // ============================================
+  try {
+    await updateNotionTaskStatus(notionPageId, status, null);
+
+    await ack({ response_action: 'clear' });
+
+    if (channelId && threadTs) {
+      await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> 🔗 <${notionLink}|Open in Notion>`,
+      });
+    }
+  } catch (error) {
+    console.error('Error updating task:', error);
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Error', emoji: true },
+        blocks: [{
+          type: 'section',
+          text: { type: 'mrkdwn', text: `❌ *Failed to update task*\n\nError: ${error.message}` },
+        }],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
+  }
+});
+
+// ============================================
+// VIEW SUBMISSION - Modal 3: Dynamic based on status
+// Created Test Plan → Progress + TestCase | In Staging/Pre-staging → Notes + CC + Report
+// ============================================
+app.view('update_task_modal_step3', async ({ ack, body, client }) => {
+  const values = body.view.state.values;
+
+  const context = modalContext.get(body.user.id);
+  const status = context?.updateStatus;
+  const notionPageId = context?.notionPageId;
+  const notionLink = context?.notionLink;
+  const threadLink = context?.threadLink;
+  const channelId = context?.channelId;
+  const threadTs = context?.threadTs;
+  const taskName = context?.taskName || 'N/A';
+
+  // ============================================
+  // Branch: Created Test Plan
+  // ============================================
+  if (status === 'Created Test Plan') {
+    const progress = values.progress_block?.progress_input?.value || '';
+    const testCaseUrl = values.testcase_block?.testcase_input?.value || '';
+
     try {
+      // Update Notion: status + progress
       await updateNotionTaskStatus(notionPageId, status, progress ? parseInt(progress, 10) : null);
+
+      // Update Test Case URL if provided
+      if (testCaseUrl) {
+        const { Client } = require('@notionhq/client');
+        const notion = new Client({ auth: process.env.NOTION_API_KEY });
+        await notion.pages.update({
+          page_id: notionPageId,
+          properties: { 'Test Case': { url: testCaseUrl } },
+        });
+      }
 
       await ack({ response_action: 'clear' });
 
-      // Determine where to post
-      let replyChannelId = channelId;
-      let replyThreadTs = threadTs;
-
-      if (threadLink) {
-        const parsed = parseThreadLink(threadLink);
-        if (parsed) {
-          replyChannelId = parsed.channelId;
-          replyThreadTs = parsed.threadTs;
-        }
-      }
-
-      if (replyChannelId && replyThreadTs) {
+      if (channelId && threadTs) {
         await client.chat.postMessage({
-          channel: replyChannelId,
-          thread_ts: replyThreadTs,
+          channel: channelId,
+          thread_ts: threadTs,
           text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> Progress: ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
         });
       }
@@ -581,15 +657,10 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
         view: {
           type: 'modal',
           title: { type: 'plain_text', text: '❌ Error', emoji: true },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `❌ *Failed to update task*\n\nError: ${error.message}`,
-              },
-            },
-          ],
+          blocks: [{
+            type: 'section',
+            text: { type: 'mrkdwn', text: `❌ *Failed to update task*\n\nError: ${error.message}` },
+          }],
           close: { type: 'plain_text', text: 'Close', emoji: true },
         },
       });
@@ -598,71 +669,10 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   }
 
   // ============================================
-  // Branch: Others
+  // Branch: In Staging / In Pre-staging (Report)
   // ============================================
-  try {
-    await updateNotionTaskStatus(notionPageId, status, progress ? parseInt(progress, 10) : null);
-
-    await ack({ response_action: 'clear' });
-
-    // Determine where to post
-    let replyChannelId = channelId;
-    let replyThreadTs = threadTs;
-
-    if (threadLink) {
-      const parsed = parseThreadLink(threadLink);
-      if (parsed) {
-        replyChannelId = parsed.channelId;
-        replyThreadTs = parsed.threadTs;
-      }
-    }
-
-    if (replyChannelId && replyThreadTs) {
-      await client.chat.postMessage({
-        channel: replyChannelId,
-        thread_ts: replyThreadTs,
-        text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> Progress: ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
-      });
-    }
-  } catch (error) {
-    console.error('Error updating task:', error);
-    await ack({
-      response_action: 'update',
-      view: {
-        type: 'modal',
-        title: { type: 'plain_text', text: '❌ Error', emoji: true },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `❌ *Failed to update task*\n\nError: ${error.message}`,
-            },
-          },
-        ],
-        close: { type: 'plain_text', text: 'Close', emoji: true },
-      },
-    });
-  }
-});
-
-// ============================================
-// VIEW SUBMISSION - Modal 3: Report with Notes + CC
-// ============================================
-app.view('update_task_modal_step3', async ({ ack, body, client }) => {
-  const values = body.view.state.values;
-
   const notes = values.notes_block?.notes_input?.value || '';
   const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
-
-  const context = modalContext.get(body.user.id);
-  const status = context?.updateStatus;
-  const notionPageId = context?.notionPageId;
-  const notionLink = context?.notionLink;
-  const threadLink = context?.threadLink;
-  const channelId = context?.channelId;
-  const threadTs = context?.threadTs;
-  const taskName = context?.taskName || 'N/A';
   const coverageData = context?.coverageData || {};
   const sheetName = context?.sheetName || '';
 
@@ -698,22 +708,10 @@ Untested Test: ${coverageData.totalNotTested || 0} cases`;
       reportMsg += `\n\ncc: ${ccFormatted}`;
     }
 
-    // Determine where to post
-    let replyChannelId = channelId;
-    let replyThreadTs = threadTs;
-
-    if (threadLink) {
-      const parsed = parseThreadLink(threadLink);
-      if (parsed) {
-        replyChannelId = parsed.channelId;
-        replyThreadTs = parsed.threadTs;
-      }
-    }
-
-    if (replyChannelId && replyThreadTs) {
+    if (channelId && threadTs) {
       await client.chat.postMessage({
-        channel: replyChannelId,
-        thread_ts: replyThreadTs,
+        channel: channelId,
+        thread_ts: threadTs,
         text: reportMsg,
       });
     }
@@ -724,123 +722,10 @@ Untested Test: ${coverageData.totalNotTested || 0} cases`;
       view: {
         type: 'modal',
         title: { type: 'plain_text', text: '❌ Error', emoji: true },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `❌ *Failed to submit report*\n\nError: ${error.message}`,
-            },
-          },
-        ],
-        close: { type: 'plain_text', text: 'Close', emoji: true },
-      },
-    });
-  }
-});
-
-// ============================================
-// VIEW SUBMISSION - Modal 4: Submit Report
-// Updates Notion and sends REPORT ONLY to thread (no status reply)
-// ============================================
-app.view('update_task_modal_step4', async ({ ack, body, client }) => {
-  const values = body.view.state.values;
-  const notes = values.notes_block?.notes_input?.value || '';
-  const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
-
-  const context = modalContext.get(body.user.id);
-  const status = context?.updateStatus;
-  const progress = context?.updateProgress;
-  const testCaseUrl = context?.testCaseUrl;
-  const notionPageId = context?.notionPageId;
-  const notionLink = context?.notionLink;
-  const threadLink = context?.threadLink;
-  const channelId = context?.channelId;
-  const threadTs = context?.threadTs;
-  const taskName = context?.taskName || 'N/A';
-  const env = context?.env || '';
-  const coverageData = context?.coverageData || {};
-
-  try {
-    // Calculate progress from coverage
-    const coverageFormatted = parseFloat(coverageData.coverage || 0).toFixed(2);
-    const calculatedProgress = parseInt(coverageData.coverage || 0, 10);
-
-    // Update Notion with status and progress from coverage
-    await updateNotionTaskStatus(notionPageId, status, calculatedProgress);
-
-    // Update Test Case URL if provided
-    if (testCaseUrl) {
-      const { Client } = require('@notionhq/client');
-      const notion = new Client({ auth: process.env.NOTION_API_KEY });
-      await notion.pages.update({
-        page_id: notionPageId,
-        properties: {
-          'Test Case': { url: testCaseUrl },
-        },
-      });
-    }
-
-    await ack({ response_action: 'clear' });
-
-    // Determine where to post
-    let replyChannelId = channelId;
-    let replyThreadTs = threadTs;
-
-    if (threadLink) {
-      const parsed = parseThreadLink(threadLink);
-      if (parsed) {
-        replyChannelId = parsed.channelId;
-        replyThreadTs = parsed.threadTs;
-      }
-    }
-
-    // Format data
-    const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
-
-    // Format CC mentions for Slack
-    const ccLine = ccUsers.length > 0 ? ccUsers.map(userId => `<@${userId}>`).join(' ') : '';
-
-    // Build report message ONLY (no status reply)
-    let reportText = `*[Testing Report] ${taskName}*\n`;
-    reportText += `> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n`;
-    reportText += `> Env: ${env}\n\n`;
-    reportText += `*Total Coverage Test:* ${coverageFormatted}%\n\n`;
-    reportText += `Test Cases: ${testcasesFormatted}\n`;
-    reportText += `Passed Test: ${coverageData.totalPassed || 0} cases\n`;
-    reportText += `Failed Test: ${coverageData.totalFailed || 0} cases\n`;
-    reportText += `Untested Test: ${coverageData.totalNotTested || 0} cases\n\n`;
-    reportText += `*Notes:*\n${notes || '-'}`;
-    if (ccLine) {
-      reportText += `\n\ncc: ${ccLine}`;
-    }
-
-    // Reply to thread - REPORT ONLY
-    if (replyChannelId && replyThreadTs) {
-      await client.chat.postMessage({
-        channel: replyChannelId,
-        thread_ts: replyThreadTs,
-        text: reportText,
-      });
-    }
-
-  } catch (error) {
-    console.error('Error submitting report:', error);
-
-    await ack({
-      response_action: 'update',
-      view: {
-        type: 'modal',
-        title: { type: 'plain_text', text: '❌ Error', emoji: true },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `❌ *Failed to submit report*\n\nError: ${error.message}`,
-            },
-          },
-        ],
+        blocks: [{
+          type: 'section',
+          text: { type: 'mrkdwn', text: `❌ *Failed to submit report*\n\nError: ${error.message}` },
+        }],
         close: { type: 'plain_text', text: 'Close', emoji: true },
       },
     });
