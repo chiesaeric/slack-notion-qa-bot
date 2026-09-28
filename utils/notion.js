@@ -146,6 +146,7 @@ async function getPageInfo(pageId) {
     name: props.Name?.title?.[0]?.plain_text || '',
     status: props.Status?.status?.name || '',
     progress: props.Number?.number || 0,
+    testCaseUrl: props['Test Case']?.url || '',
   };
 }
 

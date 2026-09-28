@@ -770,11 +770,58 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
   }
 
   try {
+    // Get page info including test case URL
+    const pageInfo = await getPageInfo(pageId);
+    
+    if (!pageInfo.testCaseUrl) {
+      await ack({
+        response_action: 'update',
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: '❌ No Test Case URL', emoji: true },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `❌ *No "Test Case" URL found in this Notion page.*\n\nPlease add a "Test Case" property with the Google Sheets URL in your Notion page.`,
+              },
+            },
+          ],
+          close: { type: 'plain_text', text: 'Close', emoji: true },
+        },
+      });
+      return;
+    }
+
+    // Parse spreadsheet ID from URL
+    const spreadsheetId = parseSpreadsheetUrl(pageInfo.testCaseUrl);
+    if (!spreadsheetId) {
+      await ack({
+        response_action: 'update',
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: '❌ Invalid Spreadsheet URL', emoji: true },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `❌ *Could not parse spreadsheet ID from Test Case URL.*\n\nPlease check the "Test Case" property in Notion.`,
+              },
+            },
+          ],
+          close: { type: 'plain_text', text: 'Close', emoji: true },
+        },
+      });
+      return;
+    }
+
+    // Fetch coverage data from Google Sheets
+    const coverageData = await fetchTestCoverageData(spreadsheetId, sheetName);
+
     // Get thread link from Notion page
     const threadLink = await getThreadLinkFromPage(pageId);
-    
-    // Get page info for context
-    const pageInfo = await getPageInfo(pageId);
 
     // Store context
     modalContext.set(body.user.id, {
@@ -784,9 +831,11 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
       notionLink: notionLink,
       threadLink: threadLink || '',
       sheetName: sheetName,
+      testCaseUrl: pageInfo.testCaseUrl,
+      coverageData: coverageData,
     });
 
-    // Push data entry modal
+    // Push data entry modal with pre-filled coverage data
     await ack({
       response_action: 'push',
       view: {
@@ -798,7 +847,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `📋 *Task:* ${pageInfo.name || 'N/A'}`,
+              text: `📋 *Task:* ${pageInfo.name || 'N/A'}\n📊 *Sheet:* ${sheetName}`,
             },
           },
           {
@@ -811,6 +860,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
               type: 'plain_text_input',
               action_id: 'testcases_input',
               placeholder: { type: 'plain_text', text: 'e.g., 78' },
+              initial_value: coverageData.scopeTest || '',
             },
             label: { type: 'plain_text', text: 'Testcases (count)', emoji: true },
           },
@@ -821,6 +871,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
               type: 'plain_text_input',
               action_id: 'testcase_link_input',
               placeholder: { type: 'plain_text', text: 'Paste test case spreadsheet link here...' },
+              initial_value: pageInfo.testCaseUrl || '',
             },
             label: { type: 'plain_text', text: 'Test Case Link', emoji: true },
             optional: true,
@@ -842,6 +893,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
               type: 'plain_text_input',
               action_id: 'passed_input',
               placeholder: { type: 'plain_text', text: 'e.g., 78' },
+              initial_value: coverageData.totalPassed || '0',
             },
             label: { type: 'plain_text', text: 'Passed (count)', emoji: true },
           },
@@ -852,6 +904,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
               type: 'plain_text_input',
               action_id: 'failed_input',
               placeholder: { type: 'plain_text', text: 'e.g., 0' },
+              initial_value: coverageData.totalFailed || '0',
             },
             label: { type: 'plain_text', text: 'Failed (count)', emoji: true },
           },
@@ -862,6 +915,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
               type: 'plain_text_input',
               action_id: 'untested_input',
               placeholder: { type: 'plain_text', text: 'e.g., 0' },
+              initial_value: coverageData.totalNotTested || '0',
             },
             label: { type: 'plain_text', text: 'Untested (count)', emoji: true },
           },
@@ -872,6 +926,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
               type: 'plain_text_input',
               action_id: 'coverage_input',
               placeholder: { type: 'plain_text', text: 'e.g., 100.00' },
+              initial_value: coverageData.coverage || '0',
             },
             label: { type: 'plain_text', text: 'Coverage (%)', emoji: true },
           },
@@ -904,7 +959,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
       },
     });
   } catch (error) {
-    console.error('Error fetching Notion page:', error);
+    console.error('Error fetching data:', error);
     
     await ack({
       response_action: 'update',
@@ -916,7 +971,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `❌ *Could not fetch Notion page*\n\nError: ${error.message}`,
+              text: `❌ *Could not fetch data*\n\nError: ${error.message}\n\nMake sure:\n1. The Google Sheet is shared with the service account\n2. The sheet name "${sheetName}" exists in the spreadsheet`,
             },
           },
         ],
