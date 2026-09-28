@@ -285,6 +285,38 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             label: { type: 'plain_text', text: 'Status *', emoji: true },
           },
           {
+            type: 'input',
+            block_id: 'progress_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'progress_input',
+              placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' },
+              initial_value: String(pageInfo.progress || '0'),
+            },
+            label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
+            optional: true,
+          },
+          {
+            type: 'input',
+            block_id: 'sheet_block',
+            element: {
+              type: 'plain_text_input',
+              action_id: 'sheet_input',
+              placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
+            },
+            label: { type: 'plain_text', text: 'Sheet Name (for Report)', emoji: true },
+            optional: true,
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: '*Required if status is In Staging or In Pre-staging*',
+              },
+            ],
+          },
+          {
             type: 'divider',
           },
         ],
@@ -316,13 +348,16 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
 });
 
 // ============================================
-// VIEW SUBMISSION - Modal 2: Status only
-// Branch: Created Test Plan → Modal 3 (progress+testcase) | In Staging/Pre-staging → Modal 3 (report) | Others → update
+// VIEW SUBMISSION - Modal 2 (Final): All fields
+// Branch: In Staging/Pre-staging → fetch coverage + reply report
+// Others → update + reply status
 // ============================================
 app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   const values = body.view.state.values;
 
   const status = values.status_block?.status_input?.selected_option?.value || '';
+  const progress = values.progress_block?.progress_input?.value || '';
+  const sheetName = values.sheet_block?.sheet_input?.value || '';
 
   const context = modalContext.get(body.user.id);
   const notionPageId = context?.notionPageId;
@@ -331,114 +366,215 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   const channelId = context?.channelId;
   const threadTs = context?.threadTs;
   const taskName = context?.taskName || 'N/A';
-  const existingTestCaseUrl = context?.testCaseUrl || '';
+  const testCaseUrl = context?.testCaseUrl || '';
 
-  // Store status
+  // Store updated values
   modalContext.set(body.user.id, {
     ...context,
     updateStatus: status,
+    updateProgress: progress,
   });
 
-  // Branch: Created Test Plan → Modal 3 (Progress + Test Case)
-  if (status === 'Created Test Plan') {
-    await ack({
-      response_action: 'push',
-      view: {
-        type: 'modal',
-        callback_id: 'update_task_modal_step3',
-        title: { type: 'plain_text', text: 'Created Test Plan', emoji: true },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `📋 *Task:* ${taskName}\n> Status will be: *Created Test Plan*`,
-            },
-          },
-          {
-            type: 'divider',
-          },
-          {
-            type: 'input',
-            block_id: 'progress_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'progress_input',
-              placeholder: { type: 'plain_text', text: 'Enter progress (0-100)' },
-              initial_value: String(context?.progress || '0'),
-            },
-            label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
-          },
-          {
-            type: 'input',
-            block_id: 'testcase_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'testcase_input',
-              placeholder: { type: 'plain_text', text: 'Paste test case spreadsheet link here...' },
-              initial_value: existingTestCaseUrl || '',
-            },
-            label: { type: 'plain_text', text: 'Test Case URL *', emoji: true },
-          },
-        ],
-        submit: { type: 'plain_text', text: 'Create', emoji: true },
-        close: { type: 'plain_text', text: 'Cancel', emoji: true },
-      },
-    });
-    return;
-  }
-
-  // Branch: In Staging or In Pre-staging → Modal 3 (Report with sheet name)
+  // ============================================
+  // Branch: In Staging or In Pre-staging
+  // ============================================
   if (status === 'In Staging' || status === 'In Pre-staging') {
-    await ack({
-      response_action: 'push',
-      view: {
-        type: 'modal',
-        callback_id: 'update_task_modal_step3',
-        title: { type: 'plain_text', text: 'Report Coverage', emoji: true },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `📋 *Task:* ${taskName}\n> Status will be: *${status}*`,
+    // Validate sheet name required
+    if (!sheetName) {
+      await ack({
+        response_action: 'update',
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: '❌ *Sheet Name is required when status is In Staging or In Pre-staging*',
+              },
             },
-          },
-          {
-            type: 'divider',
-          },
-          {
-            type: 'input',
-            block_id: 'testcase_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'testcase_input',
-              placeholder: { type: 'plain_text', text: 'Test case URL from Notion...' },
-              initial_value: existingTestCaseUrl || '',
+          ],
+          close: { type: 'plain_text', text: 'Close', emoji: true },
+        },
+      });
+      return;
+    }
+
+    // Validate test case URL exists
+    if (!testCaseUrl) {
+      await ack({
+        response_action: 'update',
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: '❌ Validation Error', emoji: true },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: '❌ *Test Case URL is required for report*\n\nPlease update the Test Case URL in Notion first.',
+              },
             },
-            label: { type: 'plain_text', text: 'Test Case URL', emoji: true },
-          },
-          {
-            type: 'input',
-            block_id: 'env_block',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'env_input',
-              placeholder: { type: 'plain_text', text: 'e.g., Pre-Staging' },
+          ],
+          close: { type: 'plain_text', text: 'Close', emoji: true },
+        },
+      });
+      return;
+    }
+
+    // Fetch coverage data
+    const spreadsheetId = parseSpreadsheetUrl(testCaseUrl);
+    if (!spreadsheetId) {
+      await ack({
+        response_action: 'update',
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: '❌ Invalid URL', emoji: true },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: '❌ *Invalid Test Case URL in Notion*',
+              },
             },
-            label: { type: 'plain_text', text: 'Environment / Sheet Name *', emoji: true },
-          },
-        ],
-        submit: { type: 'plain_text', text: 'Submit Report', emoji: true },
-        close: { type: 'plain_text', text: 'Cancel', emoji: true },
-      },
-    });
+          ],
+          close: { type: 'plain_text', text: 'Close', emoji: true },
+        },
+      });
+      return;
+    }
+
+    let coverageData;
+    try {
+      coverageData = await Promise.race([
+        fetchTestCoverageData(spreadsheetId, sheetName),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Request timeout')), 8000),
+        ),
+      ]);
+    } catch (apiError) {
+      await ack({
+        response_action: 'update',
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: '❌ Connection Error', emoji: true },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `❌ *Could not fetch coverage data*\n\nError: ${apiError.message}\n\nMake sure the sheet name "${sheetName}" exists.`,
+              },
+            },
+          ],
+          close: { type: 'plain_text', text: 'Close', emoji: true },
+        },
+      });
+      return;
+    }
+
+    // Update Notion: status + progress from coverage
+    const coverageFormatted = parseFloat(coverageData.coverage || 0);
+    await updateNotionTaskStatus(notionPageId, status, coverageFormatted);
+
+    await ack({ response_action: 'clear' });
+
+    // Build report message
+    const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
+
+    const reportMsg = `*[Testing Report] ${taskName}*
+> Date: ${today}
+> Env: ${sheetName}
+
+> *Total Coverage Test:* ${coverageFormatted.toFixed(2)}%
+
+Test Cases: ${testcasesFormatted}
+Passed Test: ${coverageData.totalPassed || 0} cases
+Failed Test: ${coverageData.totalFailed || 0} cases
+Untested Test: ${coverageData.totalNotTested || 0} cases`;
+
+    // Determine where to post
+    let replyChannelId = channelId;
+    let replyThreadTs = threadTs;
+
+    if (threadLink) {
+      const parsed = parseThreadLink(threadLink);
+      if (parsed) {
+        replyChannelId = parsed.channelId;
+        replyThreadTs = parsed.threadTs;
+      }
+    }
+
+    if (replyChannelId && replyThreadTs) {
+      await client.chat.postMessage({
+        channel: replyChannelId,
+        thread_ts: replyThreadTs,
+        text: reportMsg,
+      });
+    }
+
     return;
   }
 
-  // All other statuses → Update + reply status
+  // ============================================
+  // Branch: Created Test Plan
+  // ============================================
+  if (status === 'Created Test Plan') {
+    try {
+      await updateNotionTaskStatus(notionPageId, status, progress ? parseInt(progress, 10) : null);
+
+      await ack({ response_action: 'clear' });
+
+      // Determine where to post
+      let replyChannelId = channelId;
+      let replyThreadTs = threadTs;
+
+      if (threadLink) {
+        const parsed = parseThreadLink(threadLink);
+        if (parsed) {
+          replyChannelId = parsed.channelId;
+          replyThreadTs = parsed.threadTs;
+        }
+      }
+
+      if (replyChannelId && replyThreadTs) {
+        await client.chat.postMessage({
+          channel: replyChannelId,
+          thread_ts: replyThreadTs,
+          text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> Progress: ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
+        });
+      }
+    } catch (error) {
+      console.error('Error updating task:', error);
+      await ack({
+        response_action: 'update',
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: '❌ Error', emoji: true },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `❌ *Failed to update task*\n\nError: ${error.message}`,
+              },
+            },
+          ],
+          close: { type: 'plain_text', text: 'Close', emoji: true },
+        },
+      });
+    }
+    return;
+  }
+
+  // ============================================
+  // Branch: Others
+  // ============================================
   try {
-    await updateNotionTaskStatus(notionPageId, status, null);
+    await updateNotionTaskStatus(notionPageId, status, progress ? parseInt(progress, 10) : null);
 
     await ack({ response_action: 'clear' });
 
@@ -458,7 +594,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
       await client.chat.postMessage({
         channel: replyChannelId,
         thread_ts: replyThreadTs,
-        text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> 🔗 <${notionLink}|Open in Notion>`,
+        text: `🔄 *Task Updated!*\n\n> Status: ${status}\n> Progress: ${progress || 0}%\n> 🔗 <${notionLink}|Open in Notion>`,
       });
     }
   } catch (error) {
