@@ -247,8 +247,8 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
     // Check if task has test case
     const hasTestCase = !!pageInfo.testCaseUrl;
     const testCaseInfo = hasTestCase
-      ? `> *Test Case:* ✓ Ada (<${pageInfo.testCaseUrl}|link>)\n> *Sheet Name:* Wajib diisi untuk auto-fetch`
-      : `> *Test Case:* ✗ Tidak ada\n> *Sheet Name:* Opsional (untuk input manual)`;
+      ? `> *Test Case:* Ada\n> *Sheet Name:* Wajib diisi untuk auto-fetch`
+      : `> *Test Case:* Tidak ada\n> *Sheet Name:* Opsional (untuk input manual)`;
 
     // Modal 2 view with task info
     await ack({
