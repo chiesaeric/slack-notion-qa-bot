@@ -221,12 +221,16 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
       getThreadLinkFromPage(pageId),
     ]);
 
+    // Get thread link from Notion Slack Thread property
+    const notionThreadLink = pageInfo.slackThread || '';
+
     modalContext.set(body.user.id, {
       channelId: body.container?.channel_id || '',
       threadTs: body.container?.thread_ts || body.container?.message_ts || '',
       notionPageId: pageId,
       notionLink: notionLink,
       threadLink: threadLink || '',
+      notionThreadLink: notionThreadLink,
       testCaseUrl: pageInfo.testCaseUrl || '',
       hasTestCase: !!pageInfo.testCaseUrl,
       status: pageInfo.status || '',
@@ -671,14 +675,18 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
   // ============================================
   // Branch: In Staging / In Pre-staging (Report)
   // ============================================
-  console.log('=== Modal 3 Debug (Report) ===');
-  console.log('context:', JSON.stringify(context));
-  console.log('status:', status);
-  console.log('channelId:', channelId);
-  console.log('threadTs:', threadTs);
-  console.log('sheetName:', sheetName);
-  console.log('coverageData:', coverageData);
-  console.log('================================');
+  const notionThreadLink = context?.notionThreadLink || '';
+  let replyChannelId = channelId;
+  let replyThreadTs = threadTs;
+
+  // Parse thread link from Notion if available
+  if (notionThreadLink) {
+    const parsed = parseThreadLink(notionThreadLink);
+    if (parsed) {
+      replyChannelId = parsed.channelId;
+      replyThreadTs = parsed.threadTs;
+    }
+  }
 
   const notes = values.notes_block?.notes_input?.value || '';
   const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
@@ -690,38 +698,74 @@ app.view('update_task_modal_step3', async ({ ack, body, client }) => {
     const coverageFormatted = parseFloat(coverageData.coverage || 0);
     await updateNotionTaskStatus(notionPageId, status, coverageFormatted);
 
+    // Update Slack Thread in Notion if we have thread info
+    if (replyChannelId && replyThreadTs) {
+      const threadUrl = `https://app.slack.com/client/${replyChannelId}/${replyThreadTs}`;
+      const { Client } = require('@notionhq/client');
+      const notion = new Client({ auth: process.env.NOTION_API_KEY });
+      await notion.pages.update({
+        page_id: notionPageId,
+        properties: {
+          'Slack Thread': { url: threadUrl },
+        },
+      });
+    }
+
     await ack({ response_action: 'clear' });
 
-    // Build report message
+    // Build report message - Notion format
     const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const coverageDisplay = coverageFormatted.toFixed(2);
     const testcasesFormatted = `${coverageData.scopeTest || 0} cases`;
+    const testCaseUrl = context?.testCaseUrl || '';
 
-    let reportMsg = `*[Testing Report] ${taskName}*
-> Date: ${today}
-> Env: ${sheetName}
+    // Notion format
+    let notionReport = `[Testing Report] ${taskName}\n`;
+    notionReport += `Date: ${today} Env: ${sheetName}\n`;
+    notionReport += `Total Coverage Test: ${coverageDisplay}%\n`;
+    notionReport += `Testcases: ${testcasesFormatted}`;
+    if (testCaseUrl) notionReport += ` (${testCaseUrl})`;
+    notionReport += `\nPassed Test: ${coverageData.totalPassed || 0} cases\n`;
+    notionReport += `Failed Test: ${coverageData.totalFailed || 0} cases\n`;
+    notionReport += `Untested Test: ${coverageData.totalNotTested || 0} cases`;
+    if (notes) notionReport += `\nNotes: ${notes}`;
 
-> *Total Coverage Test:* ${coverageDisplay}%
-
-Test Cases: ${testcasesFormatted}
-Passed Test: ${coverageData.totalPassed || 0} cases
-Failed Test: ${coverageData.totalFailed || 0} cases
-Untested Test: ${coverageData.totalNotTested || 0} cases`;
-
-    if (notes) {
-      reportMsg += `\n\n*Notes:*\n${notes}`;
-    }
-
+    // Slack format
+    let slackReport = `*[Testing Report] ${taskName}*\n`;
+    slackReport += `> Date: ${today}\n`;
+    slackReport += `> Env: ${sheetName}\n\n`;
+    slackReport += `*Total Coverage Test:* ${coverageDisplay}%\n`;
+    slackReport += `Testcases: ${testcasesFormatted}`;
+    if (testCaseUrl) slackReport += ` (${testCaseUrl})`;
+    slackReport += `\nPassed Test: ${coverageData.totalPassed || 0} cases\n`;
+    slackReport += `Failed Test: ${coverageData.totalFailed || 0} cases\n`;
+    slackReport += `Untested Test: ${coverageData.totalNotTested || 0} cases\n\n`;
+    if (notes) slackReport += `*Notes:*\n${notes}\n\n`;
     if (ccUsers.length > 0) {
       const ccFormatted = ccUsers.map(u => `<@${u}>`).join(' ');
-      reportMsg += `\n\ncc: ${ccFormatted}`;
+      slackReport += `cc: ${ccFormatted}`;
     }
 
-    if (channelId && threadTs) {
+    // Reply to Notion if thread link exists
+    if (notionThreadLink) {
+      try {
+        const { Client } = require('@notionhq/client');
+        const notion = new Client({ auth: process.env.NOTION_API_KEY });
+        await notion.comments.create({
+          parent: { page_id: notionPageId },
+          rich_text: [{ type: 'text', text: { content: notionReport } }],
+        });
+      } catch (notionErr) {
+        console.error('Error posting to Notion:', notionErr.message);
+      }
+    }
+
+    // Reply to Slack thread
+    if (replyChannelId && replyThreadTs) {
       await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: reportMsg,
+        channel: replyChannelId,
+        thread_ts: replyThreadTs,
+        text: slackReport,
       });
     }
   } catch (error) {
