@@ -157,15 +157,19 @@ app.command('/qa-bot-update-task', async ({ command, ack, client }) => {
 
 // ============================================
 // VIEW SUBMISSION - Update Task Modal 1: Parse Notion link
-// Ack "Loading..." immediately, then fetch and push Modal 2
+// Pushes Modal 2 with status/progress/testcase + action buttons to branch
 // ============================================
 app.view('update_task_modal', async ({ ack, body, client }) => {
-  console.log('=== Modal 1 Handler Started ===');
-  console.log('user_id:', body.user.id);
-
   const values = body.view.state.values;
 
   const notionLink = values.notion_link_block?.notion_link_input?.value || '';
+
+  modalContext.set(body.user.id, {
+    channelId: body.container?.channel_id || '',
+    threadTs: body.container?.thread_ts || body.container?.message_ts || '',
+    notionPageId: '',
+    notionLink: notionLink,
+  });
 
   if (!notionLink) {
     await ack({
@@ -211,64 +215,33 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
     return;
   }
 
-  // Ack immediately with Loading modal
-  await ack({
-    response_action: 'update',
-    view: {
-      type: 'modal',
-      title: { type: 'plain_text', text: 'Loading...', emoji: true },
-      blocks: [
-        {
-          type: 'section',
-          text: { type: 'mrkdwn', text: 'Fetching page info from Notion...' },
-        },
-      ],
-      close: { type: 'plain_text', text: 'Cancel', emoji: true },
-    },
-  });
-
-  console.log('Fetching page info from Notion...');
-
-  // Fetch page info and thread link with short timeout
-  let pageInfo;
-  let threadLink = '';
   try {
-    const results = await Promise.race([
-      Promise.all([getPageInfo(pageId), getThreadLinkFromPage(pageId)]),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Notion timeout')), 3000)),
+    // Get page info and thread link
+    const [pageInfo, threadLink] = await Promise.all([
+      getPageInfo(pageId),
+      getThreadLinkFromPage(pageId),
     ]);
-    pageInfo = results[0];
-    threadLink = results[1] || '';
-    console.log('Notion fetch completed');
-  } catch (error) {
-    console.error('Error fetching Notion page:', error.message);
-    pageInfo = { name: 'N/A', status: '', progress: 0, testCaseUrl: '', slackThread: '' };
-  }
 
-  const notionThreadLink = pageInfo.slackThread || '';
+    // Get thread link from Notion Slack Thread property
+    const notionThreadLink = pageInfo.slackThread || '';
 
-  // Store context
-  modalContext.set(body.user.id, {
-    channelId: body.container?.channel_id || '',
-    threadTs: body.container?.thread_ts || body.container?.message_ts || '',
-    notionPageId: pageId,
-    notionLink: notionLink,
-    threadLink: threadLink || notionThreadLink || '',
-    notionThreadLink: notionThreadLink,
-    testCaseUrl: pageInfo.testCaseUrl || '',
-    hasTestCase: !!pageInfo.testCaseUrl,
-    status: pageInfo.status || '',
-    progress: pageInfo.progress || 0,
-    taskName: pageInfo.name || 'N/A',
-  });
+    modalContext.set(body.user.id, {
+      channelId: body.container?.channel_id || '',
+      threadTs: body.container?.thread_ts || body.container?.message_ts || '',
+      notionPageId: pageId,
+      notionLink: notionLink,
+      threadLink: threadLink || '',
+      notionThreadLink: notionThreadLink,
+      testCaseUrl: pageInfo.testCaseUrl || '',
+      hasTestCase: !!pageInfo.testCaseUrl,
+      status: pageInfo.status || '',
+      progress: pageInfo.progress || 0,
+      taskName: pageInfo.name || 'N/A',
+    });
 
-  console.log('Page info received:', pageInfo.name);
-  console.log('Pushing Modal 2...');
-
-  // Push Modal 2 with actual data
-  try {
-    await client.views.push({
-      trigger_id: body.trigger_id,
+    // Modal 2: status/progress/testcase + action buttons to branch
+    await ack({
+      response_action: 'push',
       view: {
         type: 'modal',
         callback_id: 'update_task_modal_step2',
@@ -291,7 +264,9 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
               text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%`,
             },
           },
-          { type: 'divider' },
+          {
+            type: 'divider',
+          },
           {
             type: 'input',
             block_id: 'status_block',
@@ -325,15 +300,34 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
             optional: true,
           },
-          { type: 'divider' },
+          {
+            type: 'divider',
+          },
         ],
         submit: { type: 'plain_text', text: 'Next', emoji: true },
         close: { type: 'plain_text', text: 'Cancel', emoji: true },
       },
     });
-    console.log('Modal 2 pushed successfully');
   } catch (error) {
-    console.error('Error pushing Modal 2:', error.message);
+    console.error('Error fetching Notion page:', error);
+
+    await ack({
+      response_action: 'update',
+      view: {
+        type: 'modal',
+        title: { type: 'plain_text', text: '❌ Error', emoji: true },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ *Could not fetch Notion page*\n\nError: ${error.message}`,
+            },
+          },
+        ],
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+      },
+    });
   }
 });
 
