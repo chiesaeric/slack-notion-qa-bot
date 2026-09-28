@@ -833,6 +833,7 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
       env: env,
       testCaseUrl: pageInfo.testCaseUrl,
       coverageData: coverageData,
+      taskName: pageInfo.name || 'N/A',
     });
 
     // Push data entry modal with pre-filled coverage data
@@ -994,6 +995,7 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
   const threadLink = context?.threadLink;
   const env = context?.env || '';
   const testCaseUrl = context?.testCaseUrl || '';
+  const taskName = context?.taskName || 'N/A';
 
   // Format coverage to 2 decimal places
   const coverageFormatted = parseFloat(coverage).toFixed(2);
@@ -1007,7 +1009,9 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
       ? `<${testcaseLink}|Testcases: ${testcases}>` 
       : `Testcases: ${testcases}`;
     
-    const reportContent = `[Testing Report BO] Bank Validity Status Feedback
+    const reportTitle = `[Testing Report] ${taskName}`;
+    
+    const reportContent = `${reportTitle}
 Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
 Env: ${env}
 
@@ -1051,7 +1055,7 @@ cc: ${cc || ' '}`;
       ? `Testcases: ${testcases} (<${testcaseLink}|link>)` 
       : `Testcases: ${testcases}`;
     
-    let reportText = `*[Testing Report BO] Bank Validity Status Feedback*\n`;
+    let reportText = `*[Testing Report] ${taskName}*\n`;
     reportText += `> Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}\n`;
     reportText += `> Env: ${env}\n\n`;
     reportText += `${testcaseLineFormatted}\n`;
