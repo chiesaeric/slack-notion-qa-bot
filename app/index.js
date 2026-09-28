@@ -495,7 +495,8 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
       getThreadLinkFromPage(pageId),
     ]);
 
-    // Build modal blocks dynamically
+    // Build modal blocks - Test Case field NOT included by default
+    // It will be added dynamically when status "Created Test Plan" is selected
     const blocks = [
       {
         type: 'input',
@@ -511,7 +512,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%\n> *Test Case:* ${pageInfo.testCaseUrl ? '✅ Attached' : '❌ Not Attached'}`,
+          text: `📋 *Task Info:*\n> *Name:* ${pageInfo.name || 'N/A'}\n> *Current Status:* ${pageInfo.status || 'N/A'}\n> *Current Progress:* ${pageInfo.progress || 0}%`,
         },
       },
       {
@@ -546,21 +547,9 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
         label: { type: 'plain_text', text: 'Progress (%)', emoji: true },
         optional: true,
       },
+      // Test Case field - added dynamically when status is "Created Test Plan"
+      // This is a placeholder that will be shown via view update
     ];
-
-    // If no Test Case attached, add field for it
-    if (!pageInfo.testCaseUrl) {
-      blocks.push({
-        type: 'input',
-        block_id: 'testcase_block',
-        element: {
-          type: 'plain_text_input',
-          action_id: 'testcase_input',
-          placeholder: { type: 'plain_text', text: 'Paste test case spreadsheet link here...' },
-        },
-        label: { type: 'plain_text', text: 'Test Cases *', emoji: true },
-      });
-    }
 
     modalContext.set(body.user.id, {
       channelId: body.container?.channel_id || '',
@@ -569,6 +558,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
       notionLink: notionLink,
       threadLink: threadLink || '',
       testCaseUrl: pageInfo.testCaseUrl || '',
+      hasTestCase: !!pageInfo.testCaseUrl,
     });
 
     await ack({
@@ -603,6 +593,66 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
       },
     });
   }
+});
+
+// ============================================
+// ACTION HANDLER - Show Test Case field when "Created Test Plan" is selected
+// ============================================
+app.action('status_input', async ({ ack, body, client }) => {
+  const selectedStatus = body.view.state.values.status_block?.status_input?.selected_option?.value;
+  const currentBlocks = body.view.blocks || [];
+  const hasTestCaseBlock = currentBlocks.some(b => b.block_id === 'testcase_block');
+
+  // If "Created Test Plan" is selected and no Test Case block exists, add it
+  if (selectedStatus === 'Created Test Plan' && !hasTestCaseBlock) {
+    const newBlocks = [
+      ...currentBlocks,
+      { type: 'divider' },
+      {
+        type: 'input',
+        block_id: 'testcase_block',
+        element: {
+          type: 'plain_text_input',
+          action_id: 'testcase_input',
+          placeholder: { type: 'plain_text', text: 'Paste test case spreadsheet link here...' },
+        },
+        label: { type: 'plain_text', text: 'Test Cases *', emoji: true },
+      },
+    ];
+
+    await ack({
+      response_action: 'update',
+      view: {
+        ...body.view,
+        blocks: newBlocks,
+      },
+    });
+    return;
+  }
+
+  // If status is changed away from "Created Test Plan" and Test Case block exists, remove it
+  if (selectedStatus !== 'Created Test Plan' && hasTestCaseBlock) {
+    const newBlocks = currentBlocks.filter(b => b.block_id !== 'testcase_block');
+    // Also remove the divider before it if it exists
+    const filteredBlocks = [];
+    for (let i = 0; i < newBlocks.length; i++) {
+      if (newBlocks[i].type === 'divider' && newBlocks[i + 1]?.block_id === 'testcase_block') {
+        continue; // skip this divider
+      }
+      filteredBlocks.push(newBlocks[i]);
+    }
+
+    await ack({
+      response_action: 'update',
+      view: {
+        ...body.view,
+        blocks: filteredBlocks,
+      },
+    });
+    return;
+  }
+
+  await ack();
 });
 
 // ============================================
