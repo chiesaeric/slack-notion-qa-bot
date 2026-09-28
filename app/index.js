@@ -342,13 +342,20 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
 
 // ============================================
 // VIEW SUBMISSION - Modal 2 (Final): All fields
-// Branch: Created Test Plan → Modal 3 (Progress+TestCase) | In Staging/Pre-staging → Modal 3 (Coverage) | Ready to Release/Released → direct update
+// Branch: Created Test Plan → Modal 3 (Progress+TestCase) | In Staging/Prestaging → Modal 3 (Coverage) | Ready to Release/Released → direct update
 // ============================================
 app.view('update_task_modal_step2', async ({ ack, body, client }) => {
+  console.log('=== Modal 2 Handler Started ===');
+  console.log('user_id:', body.user.id);
+  console.log('trigger_id:', body.trigger_id);
+
   const values = body.view.state.values;
 
   const status = values.status_block?.status_input?.selected_option?.value || '';
   const sheetName = values.sheet_block?.sheet_input?.value || '';
+
+  console.log('status:', status);
+  console.log('sheetName:', sheetName);
 
   const context = modalContext.get(body.user.id);
   const notionPageId = context?.notionPageId;
@@ -359,6 +366,9 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   const taskName = context?.taskName || 'N/A';
   const testCaseUrl = context?.testCaseUrl || '';
   const existingProgress = context?.progress || 0;
+
+  console.log('context found:', !!context);
+  console.log('notionPageId:', notionPageId);
 
   // Store updated values
   modalContext.set(body.user.id, {
@@ -372,6 +382,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   // Direct update + reply (skip Modal 3)
   // ============================================
   if (status === 'Ready to Release' || status === 'Released') {
+    console.log('=== Ready to Release/Released branch ===');
     // Get thread info from Notion Slack Thread property
     const notionThreadLink = context?.notionThreadLink || '';
     let replyChannelId = channelId;
@@ -428,8 +439,13 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
   // Fetch coverage → Modal 3 (Coverage preview + Notes + CC)
   // ============================================
   if (status === 'In Staging' || status === 'In Prestaging') {
+    console.log('=== In Staging/Prestaging branch ===');
+    console.log('sheetName:', sheetName);
+    console.log('testCaseUrl:', testCaseUrl);
+
     // Validate sheet name required
     if (!sheetName) {
+      console.log('Sheet name is required');
       await ack({
         response_action: 'update',
         view: {
@@ -447,6 +463,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
 
     // Validate test case URL exists
     if (!testCaseUrl) {
+      console.log('Test Case URL is required');
       await ack({
         response_action: 'update',
         view: {
@@ -462,9 +479,7 @@ app.view('update_task_modal_step2', async ({ ack, body, client }) => {
       return;
     }
 
-    console.log('=== Modal 2: In Staging/In Prestaging branch ===');
-    console.log('sheetName:', sheetName);
-    console.log('testCaseUrl:', testCaseUrl);
+    console.log('Fetching coverage data...');
 
     // Fetch coverage data
     const spreadsheetId = parseSpreadsheetUrl(testCaseUrl);
