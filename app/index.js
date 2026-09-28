@@ -937,9 +937,9 @@ app.view('report_task_modal', async ({ ack, body, client }) => {
             type: 'input',
             block_id: 'cc_block',
             element: {
-              type: 'plain_text_input',
+              type: 'multi_conversations_select',
               action_id: 'cc_input',
-              placeholder: { type: 'plain_text', text: 'e.g., @john, @jane' },
+              placeholder: { type: 'plain_text', text: 'Select people to notify...' },
             },
             label: { type: 'plain_text', text: 'CC (Slack mentions)', emoji: true },
             optional: true,
@@ -985,7 +985,7 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
   const untested = values.untested_block?.untested_input?.value || '0';
   const coverage = values.coverage_block?.coverage_input?.value || '0';
   const notes = values.notes_block?.notes_input?.value || '';
-  const cc = values.cc_block?.cc_input?.value || '';
+  const ccUsers = values.cc_block?.cc_input?.selected_conversations || [];
 
   const context = modalContext.get(body.user.id);
   const channelId = context?.channelId;
@@ -1012,6 +1012,9 @@ app.view('report_task_modal_final', async ({ ack, body, client }) => {
       ? `<${testcaseLink}|${testcasesFormatted}>` 
       : `${testcasesFormatted}`;
     
+    // Format CC for Notion (plain text of user IDs/names)
+    const ccFormatted = ccUsers.length > 0 ? ccUsers.join(', ') : '';
+    
     const reportTitle = `[Testing Report] ${taskName}`;
     
     const reportContent = `${reportTitle}
@@ -1028,7 +1031,7 @@ Untested Test: ${untested} cases
 *Notes:*
 ${notes || ' '}
 
-cc: ${cc || ' '}`;
+cc: ${ccFormatted}`;
 
     await notion.comments.create({
       parent: { page_id: notionPageId },
@@ -1054,8 +1057,8 @@ cc: ${cc || ' '}`;
       }
     }
 
-    // Format CC mentions for Slack
-    const ccLine = cc ? cc.split(',').map(c => c.trim()).filter(Boolean).map(c => `<@${c.replace('@', '')}>`).join(' ') : '';
+    // Format CC mentions for Slack (multi_conversations_select returns user IDs)
+    const ccLine = ccUsers.length > 0 ? ccUsers.map(userId => `<@${userId}>`).join(' ') : '';
 
     // Build report message
     const testcaseLineFormatted = testcaseLink 
