@@ -308,34 +308,6 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             label: { type: 'plain_text', text: 'Test Cases *', emoji: true },
             optional: true,
           },
-          {
-            type: 'divider',
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*Select an action:*',
-            },
-          },
-          {
-            type: 'actions',
-            block_id: 'action_buttons',
-            elements: [
-              {
-                type: 'button',
-                text: { type: 'plain_text', text: '🔄 Update Only', emoji: true },
-                action_id: 'update_only_action',
-                style: 'primary',
-              },
-              {
-                type: 'button',
-                text: { type: 'plain_text', text: '📊 Update & Report', emoji: true },
-                action_id: 'update_and_report_action',
-                style: 'danger',
-              },
-            ],
-          },
         ],
         submit: { type: 'plain_text', text: 'Update', emoji: true },
         close: { type: 'plain_text', text: 'Cancel', emoji: true },
