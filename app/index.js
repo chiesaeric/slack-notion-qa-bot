@@ -216,14 +216,17 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
   }
 
   try {
-    // Get page info and thread link
+    console.log('Fetching page info from Notion...');
     const [pageInfo, threadLink] = await Promise.all([
       getPageInfo(pageId),
       getThreadLinkFromPage(pageId),
     ]);
+    console.log('Notion fetch done. pageInfo:', JSON.stringify(pageInfo));
 
     // Get thread link from Notion Slack Thread property
     const notionThreadLink = pageInfo.slackThread || '';
+    console.log('threadLink:', threadLink);
+    console.log('notionThreadLink:', notionThreadLink);
 
     modalContext.set(body.user.id, {
       channelId: body.container?.channel_id || '',
@@ -239,6 +242,7 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
       taskName: pageInfo.name || 'N/A',
     });
 
+    console.log('Building Modal 2 view...');
     // Modal 2: status/progress/testcase + action buttons to branch
     await ack({
       response_action: 'push',
