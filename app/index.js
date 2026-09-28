@@ -309,6 +309,13 @@ app.view('update_task_modal', async ({ ack, body, client }) => {
             label: { type: 'plain_text', text: 'Sheet Name', emoji: true },
             optional: true,
           },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '_Enter the sheet name if the test case is attached and you are selecting In Pre-Staging or In Staging status._',
+            },
+          },
           { type: 'divider' },
         ],
         submit: { type: 'plain_text', text: 'Next', emoji: true },
